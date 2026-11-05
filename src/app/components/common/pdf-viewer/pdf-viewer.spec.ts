@@ -133,6 +133,14 @@ describe('PdfViewer', () => {
       expect(component.highlightMode()).toBe('marked-content');
     });
 
+    it('should sanitize unsafe src schemes to empty in iframe URL', () => {
+      fixture.componentRef.setInput('src', 'javascript:alert(1)');
+      fixture.detectChanges();
+      const iframe = fixture.nativeElement.querySelector('iframe') as HTMLIFrameElement;
+      expect(iframe.src).not.toContain('javascript');
+      expect(iframe.src).toContain('pdf-viewer-src=&');
+    });
+
     it('should create individual highlight spans for each addressable marked content element', async () => {
       const seg1 = createMockSegment('mc-1', 1);
       const seg2 = createMockSegment('mc-2', 1);

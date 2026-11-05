@@ -47,11 +47,36 @@ export class PdfViewer implements OnDestroy {
   private readonly unlisteners: (() => void)[] = [];
 
   protected readonly iframeSrc = computed(() => {
+    const src = this.src();
+    const safeSrc = this.isValidViewerSrc(src) ? src : '';
     const iframeUrl = new URL('pdf-viewer', document.baseURI);
-    iframeUrl.searchParams.set('pdf-viewer-src', this.src());
+    iframeUrl.searchParams.set('pdf-viewer-src', safeSrc);
     iframeUrl.searchParams.set('pdf-viewer-name', this.name());
     return this.sanitizer.bypassSecurityTrustResourceUrl(iframeUrl.toString());
   });
+
+  /**
+   * Validates that the provided PDF source URL uses a safe scheme.
+   *
+   * @param src The source URL string.
+   * @returns Whether the URL scheme is considered safe.
+   */
+  private isValidViewerSrc(src: string): boolean {
+    if (!src) {
+      return true;
+    }
+
+    const trimmed = src.trim().toLowerCase();
+    if (
+      trimmed.startsWith('javascript:') ||
+      trimmed.startsWith('data:') ||
+      trimmed.startsWith('vbscript:')
+    ) {
+      return false;
+    }
+
+    return true;
+  }
 
   constructor() {
     effect(() => {

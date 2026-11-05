@@ -5,6 +5,21 @@
   <title>Ferramenta de Criação de Livros Híbridos</title>
   <base href="/">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta
+  http-equiv="Content-Security-Policy"
+  content="
+    default-src 'self';
+    script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' blob:;
+    style-src 'self' 'unsafe-inline';
+    img-src 'self' blob: data:;
+    media-src 'self' blob:;
+    worker-src 'self' blob:;
+    frame-src 'self' blob:;
+    connect-src 'self' blob:;
+    object-src 'none';
+    base-uri 'self';
+  "
+  >
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
 </head>
 <body>

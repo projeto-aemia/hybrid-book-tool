@@ -62,6 +62,16 @@ describe('ZipPackager', () => {
       expect(text).toBe('conteúdo do arquivo');
     });
 
+    it('should sanitize entry paths to prevent path traversal in zip archive', async () => {
+      const entries: ExportFileEntry[] = [
+        { path: 'text/../../escape.txt', content: 'safe content' },
+      ];
+
+      const blob = await packager.createZipBlob(entries);
+      const text = await readEntryText(blob, 'escape.txt');
+      expect(text).toBe('safe content');
+    });
+
     it('should fallback to fallbackUrl when File reading throws NotReadableError', async () => {
       const mockFile = new File(['falha original'], 'video.mp4', { type: 'video/mp4' });
       const notReadableError = new DOMException(
@@ -243,6 +253,28 @@ describe('ZipPackager', () => {
       expect(createObjectURLSpy).toHaveBeenCalledWith(dummyBlob);
       expect(clicked).toBe(true);
       expect(revokeObjectURLSpy).not.toHaveBeenCalled();
+    });
+
+    it('should sanitize download filename', () => {
+      const dummyBlob = new Blob(['teste'], { type: 'application/zip' });
+      let assignedDownload = '';
+      const originalCreateElement = document.createElement.bind(document);
+      vi.spyOn(document, 'createElement').mockImplementation((tagName: string) => {
+        const el = originalCreateElement(tagName);
+        if (tagName === 'a') {
+          Object.defineProperty(el, 'download', {
+            set: (val: string) => {
+              assignedDownload = val;
+            },
+            get: () => assignedDownload,
+          });
+          el.click = () => undefined;
+        }
+        return el;
+      });
+
+      packager.triggerDownload(dummyBlob, '../../livro\r\nhibrido.zip');
+      expect(assignedDownload).toBe('livrohibrido.zip');
     });
   });
 });

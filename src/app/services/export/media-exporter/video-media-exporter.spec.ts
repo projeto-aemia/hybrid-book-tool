@@ -125,6 +125,38 @@ describe('video-media-exporter', () => {
       expect(mediaXml).toContain('<file name="video2.mp4" from="3" to="3">');
       expect(mediaXml).toContain('<phrase id="3" start="0" end="7.2" />');
     });
+
+    it('should sanitize video filenames with path traversal', async () => {
+      const dummyFile = new File(['content'], '../../malicious.mp4', { type: 'video/mp4' });
+      const mediaFiles: MediaFile[] = [
+        {
+          id: 'media-traversal' as MediaFileId,
+          file: dummyFile,
+          name: '../../malicious.mp4',
+          url: null,
+          thumbnail: null,
+        },
+      ];
+
+      const segment: VideoSegment = {
+        id: 'seg-1',
+        fileId: 'media-traversal' as MediaFileId,
+        name: 'Segment 1',
+        startTime: 0,
+        endTime: 5,
+        thumbnail: null,
+      };
+
+      const result = await exporter.exportMedia({
+        phrases: [{ phraseId: 1, segment }],
+        mediaFiles,
+        groupName: 'video_group',
+      });
+
+      expect(result.files[0].path).toBe('video/malicious.mp4');
+      const xml = result.mediaElement.toXmlString();
+      expect(xml).toContain('<file name="malicious.mp4"');
+    });
   });
 
   describe('MediaExporterRegistry', () => {

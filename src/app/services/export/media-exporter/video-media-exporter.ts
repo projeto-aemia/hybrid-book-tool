@@ -1,3 +1,4 @@
+import { sanitizeEntryFileName } from '../export-path-sanitizer';
 import { XmlElement } from '../xml/xml-builder';
 import { ExportFileEntry } from '../text-exporter/text-exporter.interface';
 import { MediaFile } from '../../media-files/media-files';
@@ -96,9 +97,10 @@ export class VideoMediaExporter implements MediaFormatExporter<VideoSegment> {
       const phraseIds = phrases.map((p) => p.phraseId);
       const minPhrase = Math.min(...phraseIds);
       const maxPhrase = Math.max(...phraseIds);
+      const fileName = sanitizeEntryFileName(mediaFile.name, 'video.mp4');
 
       const fileElement = new XmlElement('file', {
-        name: mediaFile.name,
+        name: fileName,
         from: minPhrase,
         to: maxPhrase,
       });
@@ -113,10 +115,11 @@ export class VideoMediaExporter implements MediaFormatExporter<VideoSegment> {
 
       filesElement.addChild(fileElement);
 
-      const alreadyAdded = filesToPackage.some((entry) => entry.path === `video/${mediaFile.name}`);
+      const entryPath = `video/${fileName}`;
+      const alreadyAdded = filesToPackage.some((entry) => entry.path === entryPath);
       if (!alreadyAdded) {
         filesToPackage.push({
-          path: `video/${mediaFile.name}`,
+          path: entryPath,
           content: mediaFile.file,
           fallbackUrl: mediaFile.url,
         });

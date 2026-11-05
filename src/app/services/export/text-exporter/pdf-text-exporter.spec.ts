@@ -75,4 +75,20 @@ describe('PdfTextRecordExporter', () => {
     const mediaXml = result.mediaElement.toXmlString();
     expect(mediaXml).toContain('<file name="empty.pdf" from="0" to="0" />');
   });
+
+  it('should sanitize filename with path traversal characters', async () => {
+    const dummyPdf = new File(['%PDF-1.4 dummy'], '../../malicious.pdf', { type: 'application/pdf' });
+
+    const result = await exporter.exportText({
+      file: dummyPdf,
+      segments: [],
+      groupName: 'video_group',
+    });
+
+    expect(result.files[0].path).toBe('text/malicious.pdf');
+    const mediaXml = result.mediaElement.toXmlString();
+    expect(mediaXml).toContain('<file name="malicious.pdf"');
+    const phraseMapContent = result.files[1].content as string;
+    expect(phraseMapContent).toContain('<phrase_map file="malicious.pdf"');
+  });
 });

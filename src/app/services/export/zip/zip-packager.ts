@@ -7,6 +7,7 @@ import {
   type Reader,
 } from '@zip.js/zip.js';
 import { ExportFileEntry } from '../text-exporter/text-exporter.interface';
+import { sanitizeZipPath, sanitizeDownloadFileName } from '../export-path-sanitizer';
 
 /**
  * Service responsible for packaging export file entries into a ZIP archive and saving or downloading them.
@@ -29,6 +30,7 @@ export class ZipPackager {
     fileName: string,
     onProgress?: (progressRatio: number) => void
   ): Promise<Blob | void> {
+    const safeFileName = sanitizeDownloadFileName(fileName);
     if (typeof window !== 'undefined' && 'showSaveFilePicker' in window) {
       try {
         const picker = (
@@ -44,7 +46,7 @@ export class ZipPackager {
         ).showSaveFilePicker;
 
         const handle = await picker({
-          suggestedName: fileName,
+          suggestedName: safeFileName,
           types: [
             {
               description: 'ZIP Archive',
@@ -68,7 +70,7 @@ export class ZipPackager {
     }
 
     const blob = await this.createZipBlob(entries, onProgress);
-    this.triggerDownload(blob, fileName);
+    this.triggerDownload(blob, safeFileName);
     return blob;
   }
 
@@ -110,10 +112,11 @@ export class ZipPackager {
     }
 
     for (const entry of entries) {
+      const safePath = sanitizeZipPath(entry.path);
       const entrySize = this.getEntrySize(entry);
       const { reader, level } = await this.getEntryReader(entry);
 
-      await zipWriter.add(entry.path, reader, {
+      await zipWriter.add(safePath, reader, {
         level,
         onprogress: (loaded: number) => {
           if (onProgress && totalBytes > 0) {
@@ -247,10 +250,11 @@ export class ZipPackager {
    * @param fileName The desired download file name.
    */
   public triggerDownload(blob: Blob, fileName: string): void {
+    const safeFileName = sanitizeDownloadFileName(fileName);
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;
-    anchor.download = fileName;
+    anchor.download = safeFileName;
     anchor.style.display = 'none';
     document.body.appendChild(anchor);
     anchor.click();

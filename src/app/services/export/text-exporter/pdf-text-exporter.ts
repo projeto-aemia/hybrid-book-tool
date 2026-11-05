@@ -1,3 +1,4 @@
+import { sanitizeEntryFileName } from '../export-path-sanitizer';
 import { XmlElement, XmlDocument } from '../xml/xml-builder';
 import {
   ExportFileEntry,
@@ -22,6 +23,7 @@ export class PdfTextRecordExporter implements TextRecordExporter {
     const totalPhrases = context.segments.length;
     const fromPhrase = totalPhrases > 0 ? 1 : 0;
     const toPhrase = totalPhrases > 0 ? totalPhrases : 0;
+    const fileName = sanitizeEntryFileName(context.file.name, 'document.pdf');
 
     const mediaElement = new XmlElement('media', {
       type: 'text',
@@ -31,17 +33,17 @@ export class PdfTextRecordExporter implements TextRecordExporter {
 
     const filesElement = new XmlElement('files');
     filesElement.addChild(new XmlElement('file', {
-      name: context.file.name,
+      name: fileName,
       from: fromPhrase,
       to: toPhrase,
     }));
     mediaElement.addChild(filesElement);
 
-    const phraseMapXml = this.generatePhraseMapXml(context.file.name, context);
+    const phraseMapXml = this.generatePhraseMapXml(fileName, context);
 
     const files: ExportFileEntry[] = [
       {
-        path: `text/${context.file.name}`,
+        path: `text/${fileName}`,
         content: context.file,
         fallbackUrl: context.fallbackUrl,
       },
