@@ -24,6 +24,7 @@
     "@angular/platform-server": "^22.0.7",
     "@angular/router": "^22.0.7",
     "@angular/ssr": "^22.0.7",
+    "@mediapipe/tasks-vision": "^1.1.1",
     "@zip.js/zip.js": "^2.22.0",
     "express": "^5.1.0",
     "mediabunny": "^1.55.4",

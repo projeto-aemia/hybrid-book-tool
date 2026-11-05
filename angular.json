@@ -34,6 +34,11 @@
                 "glob": "**/*",
                 "input": "node_modules/ngx-extended-pdf-viewer/assets/",
                 "output": "assets"
+              },
+              {
+                "glob": "**/*",
+                "input": "node_modules/@mediapipe/tasks-vision/wasm/",
+                "output": "assets/mediapipe/tasks-vision/wasm"
               }
             ],
             "styles": ["src/styles.scss"],
@@ -66,6 +71,24 @@
               "optimization": false,
               "extractLicenses": false,
               "sourceMap": true
+            },
+            "test-env": {
+              "assets": [
+                {
+                  "glob": "**/*",
+                  "input": "public"
+                },
+                {
+                  "glob": "**/*",
+                  "input": "node_modules/ngx-extended-pdf-viewer/assets/",
+                  "output": "assets"
+                },
+                {
+                  "glob": "**/*",
+                  "input": "test-assets",
+                  "output": "assets"
+                }
+              ]
             }
           },
           "defaultConfiguration": "production"

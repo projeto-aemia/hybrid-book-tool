@@ -8,6 +8,13 @@ main > * {
   position: absolute;
   top: 0;
   left: 0;
+  
+  &:focus-visible {
+    outline-color: var(--primary-color);
+    outline-offset: calc(var(--card-spacing) * -1 + var(--card-border-thickness) / 4);
+    outline-width: var(--card-border-width);
+    border-radius: calc(var(--card-border-radius) + var(--card-border-thickness));
+  }
 }
 
 .workflow-action-announcement-sr {

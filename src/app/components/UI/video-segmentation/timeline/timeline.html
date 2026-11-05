@@ -1,13 +1,14 @@
 <div #timelineContainer class="timeline-component-container">
   <div class="timeline-header-toolbar" tabindex="-1" (keydown)="onToolbarKeydown($event)">
-    <!-- TODO: Implement magic segmentation. -->
-    <!-- <button
+    <button
     type="button"
     class="timeline-header-button magic-button"
     (click)="onMagicButtonClick()"
+    [disabled]="!activeMediaFile()"
+    [attr.aria-expanded]="isMagicPanelOpen()"
     aria-label="Segmentação automática"
-    title="Segmentação automática (em breve)"
-    disabled
+    title="Segmentação automática"
+    [class.active]="isMagicPanelOpen()"
     >
       <div class="magic-button-content">
         <ng-container *ngTemplateOutlet="magicIcon"></ng-container>
@@ -15,7 +16,7 @@
       </div>
     </button>
 
-    <div class="toolbar-divider"></div> -->
+    <div class="toolbar-divider"></div>
 
     <button
     type="button"
@@ -173,6 +174,107 @@
     </div>
   </div>
 
+  @if (isMagicPanelOpen()) {
+    <div class="timeline-magic-panel" role="region" aria-label="Painel de segmentação automática">
+      <div class="magic-panel-row">
+        <div class="magic-control-group">
+          <label for="magic-lambda-slider" class="magic-label">
+            Limiar de atividade (&lambda;):
+          </label>
+          <input
+            id="magic-lambda-slider"
+            type="range"
+            class="magic-slider"
+            min="0"
+            max="2"
+            step="0.05"
+            [value]="autoSegmentationService.lambda()"
+            (input)="onLambdaSliderChange($event)"
+            (change)="onLambdaSliderCommit()"
+            [disabled]="autoSegmentationService.isProcessing()"
+            aria-label="Ajustar sensibilidade do limiar lambda"
+          />
+          <input
+            id="magic-lambda-input"
+            type="number"
+            class="magic-number-input"
+            min="0"
+            max="2"
+            step="0.05"
+            [value]="autoSegmentationService.lambda()"
+            (change)="onLambdaInputChange($event)"
+            [disabled]="autoSegmentationService.isProcessing()"
+            aria-label="Valor numérico do limiar lambda"
+          />
+        </div>
+
+        <div class="magic-actions">
+          @if (!autoSegmentationService.isProcessing()) {
+            <button
+              type="button"
+              class="magic-action-btn primary"
+              (click)="onRunMagicSegmentation()"
+              [disabled]="!activeMediaFile()"
+            >
+              @if (hasCachedLandmarks()) {
+                Reaplicar segmentação
+              } @else {
+                Extrair e segmentar
+              }
+            </button>
+
+            @if (hasCachedLandmarks()) {
+              <button
+                type="button"
+                class="magic-action-btn secondary"
+                (click)="onReextractLandmarks()"
+                title="Forçar nova extração de marcos corporais via MediaPipe"
+              >
+                Re-extrair marcos
+              </button>
+            }
+          } @else {
+            <button
+              type="button"
+              class="magic-action-btn cancel"
+              (click)="onCancelMagicSegmentation()"
+            >
+              Cancelar
+            </button>
+          }
+        </div>
+      </div>
+
+      @if (autoSegmentationService.isProcessing() || autoSegmentationService.statusMessage()) {
+        <div class="magic-progress-section">
+          @if (autoSegmentationService.isProcessing()) {
+            <div
+              class="magic-progress-track"
+              role="progressbar"
+              [attr.aria-valuenow]="autoSegmentationService.progressPercentage()"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              [attr.aria-label]="
+                'Progresso da extração de marcos: ' + autoSegmentationService.progressPercentage() + '%'
+              "
+            >
+              <div
+                class="magic-progress-fill"
+                [style.width.%]="autoSegmentationService.progressPercentage()"
+              ></div>
+            </div>
+          }
+
+          <div class="magic-status-container" aria-live="polite" role="status">
+            <span class="magic-status-message">
+              {{ autoSegmentationService.statusMessage() }}
+            </span>
+          </div>
+        </div>
+      }
+    </div>
+  }
+
   <div
   #trackContainer
   class="timeline-track-container"
@@ -322,12 +424,23 @@
 </div>
 
 <ng-template #magicIcon>
-  <svg aria-hidden="true" class="icon" viewBox="0 0 24 24" width="1.5rem" height="1.5rem" fill="currentColor">
-    <path style="fill:none;stroke:currentColor;stroke-width:4" d="M 4,20 14.5,9.5" />
-    <path style="fill:none;stroke:currentColor;stroke-width:4" d="M 16.5,7.5 18,6" />
-    <circle style="fill:currentColor" cx="18" cy="6" r="2" />
-    <path style="fill:currentColor" d="M 4.2546597,6.4420834 1.062786,7.5048693 -4.88775e-8,10.696743 -1.0627859,7.5048694 -4.2546597,6.4420833 -1.062786,5.3792974 4.8877499e-8,2.1874237 1.0627859,5.3792974 Z" transform="matrix(-0.83097923,-0.83097923,0.83097923,-0.83097923,14.646763,18.353237)" />
-    <path style="fill:currentColor" d="M 4.2546597,6.4420834 1.062786,7.5048693 -4.88775e-8,10.696743 -1.0627859,7.5048694 -4.2546597,6.4420833 -1.062786,5.3792974 4.8877499e-8,2.1874237 1.0627859,5.3792974 Z" transform="matrix(-0.83097923,-0.83097923,0.83097923,-0.83097923,5.6467625,9.3532375)" />
+  <svg aria-hidden="true" class="icon" viewBox="0 0 32 32" width="2rem" height="2rem">
+    <defs>
+      <linearGradient id="fill-color-linear-gradient">
+        <stop offset="0" class="magic-icon-linear-gradient-accent" />
+        <stop offset="1" class="magic-icon-linear-gradient-base" />
+      </linearGradient>
+      <linearGradient xlink:href="#fill-color-linear-gradient" id="fill-linear-gradient" x1="22.702465" y1="6.8466926" x2="3.4186232" y2="15.032198" gradientUnits="userSpaceOnUse" gradientTransform="translate(4,4)" />
+      <filter style="color-interpolation-filters:sRGB" id="blue-glint-filter" x="-0.768" y="-0.768" width="2.536" height="2.536">
+        <feGaussianBlur stdDeviation="2.2625" />
+      </filter>
+      <filter style="color-interpolation-filters:sRGB" id="green-glint-filter" x="-0.768" y="-0.768" width="2.536" height="2.536">
+        <feGaussianBlur stdDeviation="2.2625" />
+      </filter>
+    </defs>
+    <path d="m 20.464905,13.465 1.769533,3.535157 -1.769533,3.535156 3.535158,-1.769531 3.535155,1.769531 -1.769532,-3.535156 1.769532,-3.535157 -3.535155,1.769532 z" style="opacity:0.75;filter:url(#green-glint-filter)" class="magic-icon-green-glint" />
+    <path d="m 11.464906,4.465 1.769532,3.5351564 -1.769532,3.5351557 3.535157,-1.7695307 3.535155,1.7695307 -1.769531,-3.5351557 1.769531,-3.5351564 -3.535155,1.7695313 z" style="filter:url(#blue-glint-filter)" class="magic-icon-blue-glint" />
+    <path style="fill:url(#fill-linear-gradient)" d="M 11.464906,4.465 13.234438,8 11.464906,11.535312 15,9.7657813 18.535218,11.535312 16.765687,8 18.535218,4.465 15,6.2345312 Z m 10.535156,3.5351563 c -0.530006,0.00112 -1.037896,0.2125613 -1.412109,0.5878906 l 0,0 -1.5,1.5 2.828123,2.828125 1.5,-1.5 0,0 c 0.375366,-0.374199 0.586847,-0.882094 0.587986,-1.412116 0,-1.1045694 -0.895431,-2 -2,-2 z M 17.086,12.086094 l -10.5,10.5 2.828125,2.828124 10.5,-10.5 z m 3.378906,1.378906 1.769531,3.535156 -1.769531,3.535156 3.535156,-1.769531 3.535156,1.769531 -1.769531,-3.535156 1.769531,-3.535156 -3.535156,1.769531 z" />
   </svg>
 </ng-template>
 

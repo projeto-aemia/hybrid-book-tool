@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 
 import { TextSegmentationService, TextSegment } from './text-segmentation';
-import { mockSegments } from './mock-data.json';
+import { mockSegments } from '../../../../test-assets/mock-data.json';
 import { TextContent } from 'ngx-extended-pdf-viewer';
 
 describe('TextSegmentationService', () => {

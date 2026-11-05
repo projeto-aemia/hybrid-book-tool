@@ -470,6 +470,85 @@ export class VideoSegmentationService {
   }
 
   /**
+   * Applies automatically generated segment intervals to a media file, replacing any existing
+   * segments for that file while preserving segments of other files.
+   *
+   * @param fileId The ID of the media file.
+   * @param intervals Array of start and end times in seconds.
+   * @returns Snapshot of before state and the newly created segments.
+   */
+  public applyAutoSegments(
+    fileId: MediaFileId,
+    intervals: readonly { startTime: number, endTime: number }[],
+  ): { beforeSegments: VideoSegment[], beforeCorrelationOrder: string[], newSegments: VideoSegment[] } {
+    const currentSegments = this.segments();
+    const currentCorrelationOrder = this.correlationOrder();
+    const mediaFiles = this.mediaFilesService.mediaFiles();
+    const mediaFile = mediaFiles.find((f) => f.id === fileId);
+    const fileName = mediaFile ? mediaFile.name : `Arquivo ${fileId}`;
+    const duration = this.fileDurations.get(fileId) ?? 0;
+
+    const existingForFile = currentSegments.filter((s) => s.fileId === fileId);
+    const removedIds = new Set(existingForFile.map((s) => s.id).filter(Boolean) as string[]);
+
+    for (const id of removedIds) {
+      const timer = this.segmentThumbnailDebounceTimers.get(id);
+      if (timer) {
+        clearTimeout(timer);
+        this.segmentThumbnailDebounceTimers.delete(id);
+      }
+      const sub = this.segmentThumbnailSubscriptions.get(id);
+      if (sub) {
+        sub.unsubscribe();
+        this.segmentThumbnailSubscriptions.delete(id);
+      }
+      this.thumbnailService?.freeSegmentThumbnail?.(id);
+    }
+
+    const otherSegments = currentSegments.filter((s) => s.fileId !== fileId);
+
+    let validIntervals = intervals;
+    if (validIntervals.length === 0 && duration > 0) {
+      validIntervals = [{ startTime: 0, endTime: duration }];
+    }
+
+    const newSegments: VideoSegment[] = validIntervals.map((interval) => {
+      const startTime = Math.max(0, interval.startTime);
+      const endTime = Math.min(duration > 0 ? duration : interval.endTime, interval.endTime);
+      const id = this.createSegmentId();
+      return {
+        id,
+        fileId,
+        name: this.formatSegmentName(fileName, startTime, endTime),
+        startTime,
+        endTime,
+        thumbnail: null,
+      };
+    });
+
+    const updatedSegments = [...otherSegments, ...newSegments];
+    this.sortSegmentsTemporally(updatedSegments);
+    this.segments.set(updatedSegments);
+
+    const updatedCorrelationOrder = currentCorrelationOrder.filter((id) => !removedIds.has(id));
+    const newSegmentIds = newSegments.map((s) => s.id!).filter(Boolean);
+    const finalCorrelationOrder = [...updatedCorrelationOrder, ...newSegmentIds];
+    this.correlationOrder.set(finalCorrelationOrder);
+
+    for (const seg of newSegments) {
+      if (seg.id) {
+        this.requestSegmentThumbnail(seg.id);
+      }
+    }
+
+    return {
+      beforeSegments: currentSegments,
+      beforeCorrelationOrder: currentCorrelationOrder,
+      newSegments,
+    };
+  }
+
+  /**
    * Deletes a segment by ID from both temporal and correlation lists.
    *
    * @param segmentId The ID of the segment to delete.

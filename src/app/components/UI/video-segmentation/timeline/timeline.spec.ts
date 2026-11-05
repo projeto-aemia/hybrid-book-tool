@@ -6,6 +6,7 @@ import {
   type VideoSegment
 } from '../../../../services/video-segmentation/video-segmentation';
 import { Thumbnail } from '../../../../services/thumbnail/thumbnail';
+import { AutoSegmentationService } from '../../../../services/auto-segmentation/auto-segmentation';
 import { signal } from '@angular/core';
 import { of } from 'rxjs';
 
@@ -19,6 +20,17 @@ describe('Timeline', () => {
   let component: Timeline;
   let fixture: ComponentFixture<Timeline>;
   let mockMediaFiles: { mediaFiles: ReturnType<typeof signal<MediaFile[]>> };
+  let mockAutoSegmentation: {
+    lambda: ReturnType<typeof signal<number>>,
+    isProcessing: ReturnType<typeof signal<boolean>>,
+    statusMessage: ReturnType<typeof signal<string>>,
+    progressPercentage: ReturnType<typeof signal<number>>,
+    hasCachedLandmarks: ReturnType<typeof vi.fn>,
+    runAutoSegmentation: ReturnType<typeof vi.fn>,
+    recalculateWithLambda: ReturnType<typeof vi.fn>,
+    setLambda: ReturnType<typeof vi.fn>,
+    cancel: ReturnType<typeof vi.fn>,
+  };
   let mockVideoSegmentation: {
     segments: ReturnType<typeof signal<VideoSegment[]>>,
     getFileDuration: ReturnType<typeof vi.fn>,
@@ -109,12 +121,25 @@ describe('Timeline', () => {
       freeAllFilmstripThumbnails: vi.fn(),
     };
 
+    mockAutoSegmentation = {
+      lambda: signal<number>(1.0),
+      isProcessing: signal<boolean>(false),
+      statusMessage: signal<string>(''),
+      progressPercentage: signal<number>(0),
+      hasCachedLandmarks: vi.fn(() => false),
+      runAutoSegmentation: vi.fn().mockResolvedValue(undefined),
+      recalculateWithLambda: vi.fn(),
+      setLambda: vi.fn(),
+      cancel: vi.fn(),
+    };
+
     await TestBed.configureTestingModule({
       imports: [Timeline],
       providers: [
         { provide: MediaFiles, useValue: mockMediaFiles },
         { provide: VideoSegmentationService, useValue: mockVideoSegmentation },
         { provide: Thumbnail, useValue: mockThumbnail },
+        { provide: AutoSegmentationService, useValue: mockAutoSegmentation },
       ],
     }).compileComponents();
 
@@ -1045,21 +1070,12 @@ describe('Timeline', () => {
 
         const buttons = fixture.nativeElement.querySelectorAll('.timeline-header-toolbar .timeline-header-button');
 
-        /*
-        // TODO: Implement the magic button. These indices assume there is a magic button, which isn't there currently.
-        // Button index 0: magic button
-        // Button index 1: Cut button
-        // Button index 2: Join button
-        // Button index 3: Delete button
+        const magicButton = buttons[0] as HTMLButtonElement;
         const cutButton = buttons[1] as HTMLButtonElement;
         const joinButton = buttons[2] as HTMLButtonElement;
         const deleteButton = buttons[3] as HTMLButtonElement;
-        // The following indices are relative to the buttons the way they are currently, without the magic button.
-        */
-        const cutButton = buttons[0] as HTMLButtonElement;
-        const joinButton = buttons[1] as HTMLButtonElement;
-        const deleteButton = buttons[2] as HTMLButtonElement;
 
+        expect(magicButton.disabled).toBe(false);
         expect(cutButton.disabled).toBe(false);
         expect(joinButton.disabled).toBe(true);
         expect(deleteButton.disabled).toBe(false);
@@ -1152,6 +1168,147 @@ describe('Timeline', () => {
         expect(startTab).toBeTruthy();
         expect(anchor.compareDocumentPosition(startTab) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
       });
+    });
+  });
+
+  describe('magic auto-segmentation integration', () => {
+    it('should toggle magic panel visibility when magic button is clicked', () => {
+      expect(component.isMagicPanelOpen()).toBe(false);
+      component.onMagicButtonClick();
+      expect(component.isMagicPanelOpen()).toBe(true);
+      component.onMagicButtonClick();
+      expect(component.isMagicPanelOpen()).toBe(false);
+    });
+
+    it('should report whether landmarks are cached for the active file', () => {
+      component.activeMediaFileId.set('file-1' as MediaFileId);
+      mockAutoSegmentation.hasCachedLandmarks.mockReturnValue(true);
+      expect(component.hasCachedLandmarks()).toBe(true);
+
+      mockAutoSegmentation.hasCachedLandmarks.mockReturnValue(false);
+      expect(component.hasCachedLandmarks()).toBe(false);
+    });
+
+    it('should invoke runAutoSegmentation when onRunMagicSegmentation is called', async () => {
+      component.activeMediaFileId.set('file-1' as MediaFileId);
+      await component.onRunMagicSegmentation();
+      expect(mockAutoSegmentation.runAutoSegmentation).toHaveBeenCalledWith('file-1');
+    });
+
+    it('should invoke runAutoSegmentation with forceReextract when onReextractLandmarks is called', async () => {
+      component.activeMediaFileId.set('file-1' as MediaFileId);
+      await component.onReextractLandmarks();
+      expect(mockAutoSegmentation.runAutoSegmentation).toHaveBeenCalledWith('file-1', {
+        forceReextract: true,
+      });
+    });
+
+    it('should invoke cancel on auto-segmentation service when cancelled', () => {
+      component.onCancelMagicSegmentation();
+      expect(mockAutoSegmentation.cancel).toHaveBeenCalled();
+    });
+
+    it('should update lambda signal immediately and schedule throttled recalculation via rAF on slider change', () => {
+      component.activeMediaFileId.set('file-1' as MediaFileId);
+      mockAutoSegmentation.hasCachedLandmarks.mockReturnValue(true);
+      const rafSpy = vi.spyOn(window, 'requestAnimationFrame');
+      rafSpy.mockClear();
+
+      const mockEvent = { target: { value: '1.25' } } as unknown as Event;
+      component.onLambdaSliderChange(mockEvent);
+
+      expect(mockAutoSegmentation.setLambda).toHaveBeenCalledWith(1.25);
+      expect(rafSpy).toHaveBeenCalledTimes(1);
+      expect(mockAutoSegmentation.recalculateWithLambda).not.toHaveBeenCalled();
+
+      rafSpy.mockRestore();
+    });
+
+    it('should coalesce rapid consecutive slider changes into a single rAF recalculation with the latest value', () => {
+      component.activeMediaFileId.set('file-1' as MediaFileId);
+      mockAutoSegmentation.hasCachedLandmarks.mockReturnValue(true);
+
+      let rafCallback: FrameRequestCallback | null = null;
+      const rafSpy = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb: FrameRequestCallback) => {
+        rafCallback = cb;
+        return 123;
+      });
+
+      component.onLambdaSliderChange({ target: { value: '0.8' } } as unknown as Event);
+      component.onLambdaSliderChange({ target: { value: '1.2' } } as unknown as Event);
+      component.onLambdaSliderChange({ target: { value: '1.5' } } as unknown as Event);
+
+      expect(rafSpy).toHaveBeenCalledTimes(1);
+      expect(mockAutoSegmentation.setLambda).toHaveBeenCalledWith(1.5);
+      expect(mockAutoSegmentation.recalculateWithLambda).not.toHaveBeenCalled();
+
+      expect(rafCallback).not.toBeNull();
+      rafCallback!(performance.now());
+
+      expect(mockAutoSegmentation.recalculateWithLambda).toHaveBeenCalledTimes(1);
+      expect(mockAutoSegmentation.recalculateWithLambda).toHaveBeenCalledWith('file-1', 1.5);
+
+      rafSpy.mockRestore();
+    });
+
+    it('should immediately flush pending recalculation on slider commit', () => {
+      component.activeMediaFileId.set('file-1' as MediaFileId);
+      mockAutoSegmentation.hasCachedLandmarks.mockReturnValue(true);
+
+      const cancelRafSpy = vi.spyOn(window, 'cancelAnimationFrame');
+      component.onLambdaSliderChange({ target: { value: '1.4' } } as unknown as Event);
+
+      expect(mockAutoSegmentation.recalculateWithLambda).not.toHaveBeenCalled();
+
+      component.onLambdaSliderCommit();
+
+      expect(cancelRafSpy).toHaveBeenCalled();
+      expect(mockAutoSegmentation.recalculateWithLambda).toHaveBeenCalledWith('file-1', 1.4);
+
+      cancelRafSpy.mockRestore();
+    });
+
+    it('should cancel pending rAF and immediately recalculate synchronously on numeric input change', () => {
+      component.activeMediaFileId.set('file-1' as MediaFileId);
+      mockAutoSegmentation.hasCachedLandmarks.mockReturnValue(true);
+
+      const cancelRafSpy = vi.spyOn(window, 'cancelAnimationFrame');
+      component.onLambdaSliderChange({ target: { value: '0.9' } } as unknown as Event);
+
+      component.onLambdaInputChange({ target: { value: '1.1' } } as unknown as Event);
+
+      expect(cancelRafSpy).toHaveBeenCalled();
+      expect(mockAutoSegmentation.setLambda).toHaveBeenCalledWith(1.1);
+      expect(mockAutoSegmentation.recalculateWithLambda).toHaveBeenCalledWith('file-1', 1.1);
+
+      cancelRafSpy.mockRestore();
+    });
+
+    it('should cancel pending rAF recalculation when component is destroyed', () => {
+      component.activeMediaFileId.set('file-1' as MediaFileId);
+      mockAutoSegmentation.hasCachedLandmarks.mockReturnValue(true);
+
+      const cancelRafSpy = vi.spyOn(window, 'cancelAnimationFrame');
+      component.onLambdaSliderChange({ target: { value: '1.3' } } as unknown as Event);
+
+      component.ngOnDestroy();
+
+      expect(cancelRafSpy).toHaveBeenCalled();
+      cancelRafSpy.mockRestore();
+    });
+
+    it('should update lambda without scheduling recalculation when landmarks are not cached', () => {
+      component.activeMediaFileId.set('file-1' as MediaFileId);
+      mockAutoSegmentation.hasCachedLandmarks.mockReturnValue(false);
+      const rafSpy = vi.spyOn(window, 'requestAnimationFrame');
+
+      component.onLambdaSliderChange({ target: { value: '0.75' } } as unknown as Event);
+
+      expect(mockAutoSegmentation.setLambda).toHaveBeenCalledWith(0.75);
+      expect(rafSpy).not.toHaveBeenCalled();
+      expect(mockAutoSegmentation.recalculateWithLambda).not.toHaveBeenCalled();
+
+      rafSpy.mockRestore();
     });
   });
 });

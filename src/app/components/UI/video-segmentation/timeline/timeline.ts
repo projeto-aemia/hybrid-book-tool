@@ -24,6 +24,7 @@ import {
   type FilmstripFileSection,
 } from '../../../../services/thumbnail/thumbnail';
 import { Subscription } from 'rxjs';
+import { AutoSegmentationService } from '../../../../services/auto-segmentation/auto-segmentation';
 import { UndoRedoService } from '../../../../services/undo/undo-redo';
 import {
   SplitSegmentCommand,
@@ -61,6 +62,7 @@ export type TimelineTrackItem =
 export class Timeline implements OnDestroy, AfterViewInit {
   protected readonly mediaFilesService = inject(MediaFiles);
   protected readonly videoSegmentationService = inject(VideoSegmentationService);
+  protected readonly autoSegmentationService = inject(AutoSegmentationService);
   private readonly thumbnailService = inject(Thumbnail);
   private readonly undoRedoService = inject(UndoRedoService);
   private readonly renderer = inject(Renderer2);
@@ -69,6 +71,7 @@ export class Timeline implements OnDestroy, AfterViewInit {
   public readonly activeMediaFileId = model<MediaFileId | null>(null);
   public readonly isPlaying = model<boolean>(false);
   public readonly isScrubbing = model<boolean>(false);
+  public readonly isMagicPanelOpen = signal<boolean>(false);
 
   public readonly pixelsPerSecond = signal<number>(50);
   public readonly filmstripBodyHeight = signal<number>(80);
@@ -103,6 +106,10 @@ export class Timeline implements OnDestroy, AfterViewInit {
   private tabKeyGhostTimer: ReturnType<typeof setTimeout> | null = null;
   private trackKeyScrubTimer: ReturnType<typeof setTimeout> | null = null;
   private lastFocusedEntityId: string | null = null;
+  private lambdaRafId: number | null = null;
+  private pendingLambdaValue: number | null = null;
+  private pendingLambdaFileId: MediaFileId | null = null;
+  private isRecalculatingLambda = false;
 
   private unlistenMouseMove: (() => void) | null = null;
   private unlistenMouseUp: (() => void) | null = null;
@@ -390,6 +397,7 @@ export class Timeline implements OnDestroy, AfterViewInit {
       clearTimeout(this.trackKeyScrubTimer);
       this.trackKeyScrubTimer = null;
     }
+    this.cancelPendingLambdaRecalculation();
     this.cleanupMouseListeners();
   }
 
@@ -1647,10 +1655,178 @@ export class Timeline implements OnDestroy, AfterViewInit {
   }
 
   /**
-   * Handles the click event on the magic automatic segmentation button.
+   * Checks whether pose landmarks are cached in memory for the currently active media file.
+   *
+   * @returns True if landmarks are cached for the active video.
+   */
+  public hasCachedLandmarks(): boolean {
+    const activeId = this.activeMediaFileId();
+    return activeId !== null && this.autoSegmentationService.hasCachedLandmarks(activeId);
+  }
+
+  /**
+   * Toggles the visibility of the auto-segmentation panel.
    */
   public onMagicButtonClick(): void {
-    // TODO: Implement magic auto-segmentation.
+    this.isMagicPanelOpen.update((open) => !open);
+  }
+
+  /**
+   * Handles immediate lambda slider adjustment by updating the service signal instantly and scheduling
+   * an animation frame throttled recalculation of timeline segment boundaries.
+   *
+   * @param event The input change event from the range slider.
+   */
+  public onLambdaSliderChange(event: Event): void {
+    const target = event.target as HTMLInputElement;
+    const value = parseFloat(target.value);
+    if (isNaN(value)) {
+      return;
+    }
+
+    this.autoSegmentationService.setLambda(value);
+
+    const activeId = this.activeMediaFileId();
+    if (activeId && this.autoSegmentationService.hasCachedLandmarks(activeId)) {
+      this.schedulePendingLambdaRecalculation(activeId, value);
+    }
+  }
+
+  /**
+   * Handles the commit event (slider release) by immediately flushing any pending lambda recalculation.
+   */
+  public onLambdaSliderCommit(): void {
+    this.flushPendingLambdaRecalculation();
+  }
+
+  /**
+   * Handles explicit numeric input of the lambda threshold, immediately cancelling pending throttled recalculations
+   * and applying the exact value synchronously.
+   *
+   * @param event The change event from the numeric lambda input.
+   */
+  public onLambdaInputChange(event: Event): void {
+    const target = event.target as HTMLInputElement;
+    const value = parseFloat(target.value);
+    if (isNaN(value)) {
+      return;
+    }
+
+    this.cancelPendingLambdaRecalculation();
+    this.autoSegmentationService.setLambda(value);
+
+    const activeId = this.activeMediaFileId();
+    if (activeId && this.autoSegmentationService.hasCachedLandmarks(activeId)) {
+      this.autoSegmentationService.recalculateWithLambda(activeId, value);
+    }
+  }
+
+  /**
+   * Schedules a throttled lambda recalculation synchronized with the next animation frame.
+   * Coalesces rapid intermediate values to prevent UI stutter during continuous slider adjustments.
+   *
+   * @param mediaFileId Target media file ID.
+   * @param value Lambda threshold value to apply.
+   */
+  private schedulePendingLambdaRecalculation(mediaFileId: MediaFileId, value: number): void {
+    this.pendingLambdaFileId = mediaFileId;
+    this.pendingLambdaValue = value;
+
+    if (this.lambdaRafId !== null || this.isRecalculatingLambda) {
+      return;
+    }
+
+    if (typeof requestAnimationFrame === 'function') {
+      this.lambdaRafId = requestAnimationFrame(() => {
+        this.lambdaRafId = null;
+        this.processPendingLambdaRecalculation();
+      });
+    } else {
+      this.processPendingLambdaRecalculation();
+    }
+  }
+
+  /**
+   * Processes and drains pending lambda recalculations, skipping intermediate frames when rapid slider
+   * movements occur.
+   */
+  private processPendingLambdaRecalculation(): void {
+    if (this.pendingLambdaValue === null || this.pendingLambdaFileId === null) {
+      return;
+    }
+
+    this.isRecalculatingLambda = true;
+    try {
+      while (this.pendingLambdaValue !== null && this.pendingLambdaFileId !== null) {
+        const targetValue = this.pendingLambdaValue;
+        const targetFileId = this.pendingLambdaFileId;
+        this.pendingLambdaValue = null;
+        this.pendingLambdaFileId = null;
+
+        this.autoSegmentationService.recalculateWithLambda(targetFileId, targetValue);
+      }
+    } finally {
+      this.isRecalculatingLambda = false;
+      if (this.pendingLambdaValue !== null && this.pendingLambdaFileId !== null) {
+        this.schedulePendingLambdaRecalculation(this.pendingLambdaFileId, this.pendingLambdaValue);
+      }
+    }
+  }
+
+  /**
+   * Flushes any pending throttled lambda recalculation immediately.
+   */
+  private flushPendingLambdaRecalculation(): void {
+    if (this.lambdaRafId !== null) {
+      if (typeof cancelAnimationFrame === 'function') {
+        cancelAnimationFrame(this.lambdaRafId);
+      }
+      this.lambdaRafId = null;
+    }
+    this.processPendingLambdaRecalculation();
+  }
+
+  /**
+   * Cancels any pending scheduled lambda recalculation.
+   */
+  private cancelPendingLambdaRecalculation(): void {
+    if (this.lambdaRafId !== null) {
+      if (typeof cancelAnimationFrame === 'function') {
+        cancelAnimationFrame(this.lambdaRafId);
+      }
+      this.lambdaRafId = null;
+    }
+    this.pendingLambdaValue = null;
+    this.pendingLambdaFileId = null;
+  }
+
+  /**
+   * Triggers automatic segmentation for the currently active media file using cached landmarks if available.
+   */
+  public async onRunMagicSegmentation(): Promise<void> {
+    const activeId = this.activeMediaFileId();
+    if (!activeId) {
+      return;
+    }
+    await this.autoSegmentationService.runAutoSegmentation(activeId);
+  }
+
+  /**
+   * Forces re-extraction of pose landmarks and recalculation of segments for the active media file.
+   */
+  public async onReextractLandmarks(): Promise<void> {
+    const activeId = this.activeMediaFileId();
+    if (!activeId) {
+      return;
+    }
+    await this.autoSegmentationService.runAutoSegmentation(activeId, { forceReextract: true });
+  }
+
+  /**
+   * Cancels active auto-segmentation processing.
+   */
+  public onCancelMagicSegmentation(): void {
+    this.autoSegmentationService.cancel();
   }
 
   private scheduleGhostEndAfterTabKey(segment: VideoSegment, edge: 'start' | 'end'): void {

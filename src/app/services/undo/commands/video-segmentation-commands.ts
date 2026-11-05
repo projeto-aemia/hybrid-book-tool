@@ -6,6 +6,7 @@ import {
   VideoSegmentationService,
   type VideoSegment,
 } from '../../video-segmentation/video-segmentation';
+import { type MediaFileId } from '../../media-files/media-files';
 
 /**
  * Sanitizes video segments for command snapshots, stripping ephemeral thumbnail URLs.
@@ -193,6 +194,71 @@ export class UpdateSegmentBoundaryCommand implements UndoCommand {
         nextCommand.segmentId === this.segmentId &&
         nextCommand.edge === this.edge
       ) {
+        const now = Date.now();
+        if (now - this.lastUpdateTime < 800) {
+          this.afterSegments = nextCommand.afterSegments;
+          this.afterCorrelationOrder = nextCommand.afterCorrelationOrder;
+          this.lastUpdateTime = now;
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+}
+
+/**
+ * Command recording an automatic segmentation operation on a video file.
+ * Supports continuous coalescing when threshold parameters (such as lambda) are rapidly tweaked.
+ */
+export class AutoSegmentVideoCommand implements UndoCommand {
+  public readonly description = 'Segmentação automática de vídeo';
+  public readonly category: UndoCommandCategory = 'video-segmentation';
+  private lastUpdateTime = Date.now();
+  private readonly beforeSegments: readonly VideoSegment[];
+  private afterSegments: readonly VideoSegment[];
+
+  constructor(
+    beforeSegments: readonly VideoSegment[],
+    private readonly beforeCorrelationOrder: readonly string[],
+    afterSegments: readonly VideoSegment[],
+    private afterCorrelationOrder: readonly string[],
+    public readonly fileId: MediaFileId,
+    private readonly videoSegmentationService: VideoSegmentationService,
+  ) {
+    this.beforeSegments = sanitizeSegments(beforeSegments);
+    this.afterSegments = sanitizeSegments(afterSegments);
+  }
+
+  /**
+   * Reverts segmentation state to prior state before auto-segmentation.
+   */
+  public undo(): void {
+    this.videoSegmentationService.restoreSegmentationState(
+      this.beforeSegments,
+      this.beforeCorrelationOrder,
+    );
+  }
+
+  /**
+   * Re-applies the auto-segmentation state.
+   */
+  public redo(): void {
+    this.videoSegmentationService.restoreSegmentationState(
+      this.afterSegments,
+      this.afterCorrelationOrder,
+    );
+  }
+
+  /**
+   * Coalesces rapid consecutive parameter adjustments for the same media file.
+   *
+   * @param nextCommand The candidate command to merge.
+   * @returns True if coalesced, false otherwise.
+   */
+  public mergeWith(nextCommand: UndoCommand): boolean {
+    if (nextCommand instanceof AutoSegmentVideoCommand) {
+      if (nextCommand.fileId === this.fileId) {
         const now = Date.now();
         if (now - this.lastUpdateTime < 800) {
           this.afterSegments = nextCommand.afterSegments;
