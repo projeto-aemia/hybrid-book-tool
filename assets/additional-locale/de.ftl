@@ -1,0 +1,47 @@
+# Copyright 2019-2093 by Stephan Rauh
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Additional translations
+unverified-signature-warning = Diese PDF-Datei enthält eine digitale Signatur. Der PDF-Viewer kann nicht überprüfen, ob die Signatur gültig ist. Bitte laden Sie die Datei herunter und öffnen Sie sie in Acrobat Reader, um die Gültigkeit der Signatur zu überprüfen.
+pdfjs-infinite-scroll-button-label = Infinite Scroll
+pdfjs-find-multiple-checkbox-label = Jedes Wort finden
+pdfjs-find-regexp-checkbox-label = Regulärer Ausdruck
+pdfjs-editor-movePageUp-button =
+    .title = Seite nach oben verschieben
+pdfjs-editor-movePageUp-button-label = Seite nach oben verschieben
+pdfjs-editor-movePageDown-button =
+    .title = Seite nach unten verschieben
+pdfjs-editor-movePageDown-button-label = Seite nach unten verschieben
+pdfjs-cursor-page-flip-tool-button =
+    .title = Seitenblättern
+pdfjs-cursor-page-flip-tool-button-label = Seitenblättern
+
+# #3255 Sidebar buttons. pdf.js removed these keys in commit 2367196a0
+# ("Change the sidebar for a views manager"); ngx-extended-pdf-viewer keeps its
+# own sidebar, so the translations live here now.
+pdfjs-toggle-sidebar-button =
+    .title = Sidebar umschalten
+pdfjs-toggle-sidebar-button-label = Sidebar umschalten
+pdfjs-document-outline-button =
+    .title = Dokumentstruktur anzeigen (Doppelklicken, um alle Einträge aus- bzw. einzuklappen)
+pdfjs-document-outline-button-label = Dokumentstruktur
+pdfjs-attachments-button =
+    .title = Anhänge anzeigen
+pdfjs-attachments-button-label = Anhänge
+pdfjs-layers-button =
+    .title = Ebenen anzeigen (Doppelklicken, um alle Ebenen auf den Standardzustand zurückzusetzen)
+pdfjs-layers-button-label = Ebenen
+pdfjs-thumbs-button =
+    .title = Miniaturansichten anzeigen
+pdfjs-thumbs-button-label = Miniaturansichten
