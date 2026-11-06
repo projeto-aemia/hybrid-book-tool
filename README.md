@@ -36,7 +36,7 @@ The application implements a five-stage sequential authoring pipeline:
 5. **Packaging & Export**:
    - Edit publication metadata (title, author, publisher, ISBN, year, translator, editorial revision).
    - Generate standard Hybrid Book 3.0 packages in a ZIP file.
-   - The Hybrid Book 3.0 specification does not define a text record format, a specification for mapping phases in the PDF tex record is available at [PDF_TEXT_RECORD_PHRASE_MAP.md](PDF_TEXT_RECORD_PHRASE_MAP.md).
+   - The Hybrid Book 3.0 specification does not define a text record format, a specification for mapping phases in the PDF text record is available at [PDF_TEXT_RECORD_PHRASE_MAP.md](PDF_TEXT_RECORD_PHRASE_MAP.md).
 
 ---
 
@@ -45,10 +45,11 @@ The application implements a five-stage sequential authoring pipeline:
 - **Framework**: [Angular 22](https://angular.dev/) (Zoneless Change Detection, Signals, Standalone Components, SSR).
 - **Language**: [TypeScript 5.x](https://www.typescriptlang.org/) & SCSS.
 - **Media & Processing**:
-  - [`mediabunny`](https://www.npmjs.com/package/mediabunny): High-performance client-side video decoding and frame
+  - [Mediabunny](https://mediabunny.dev/): High-performance client-side video decoding and frame
     capture.
-  - [`ngx-extended-pdf-viewer`](https://pdfviewer.net/): PDF rendering and text layer interaction.
-  - [`@zip.js/zip.js`](https://gildas-lormeau.github.io/zip.js/): Streaming ZIP file packaging in the browser.
+  - [ngx-extended-pdf-viewer](https://pdfviewer.net/): PDF rendering and text layer interaction.
+  - [zip.js](https://gildas-lormeau.github.io/zip.js/): Streaming ZIP file packaging in the browser.
+  - [MediaPipe Pose Lankmarker](https://developers.google.com/edge/mediapipe/solutions/vision/pose_landmarker): Pose landmarking from video streams.
 - **Testing & Tooling**:
   - [Vitest](https://vitest.dev/): Unit testing.
   - [Angular ESLint](https://github.com/angular-eslint/angular-eslint): Linting and stylistic analysis.
@@ -152,3 +153,9 @@ Contributions are welcome! Please adhere to the following standards:
    - Ensure proper contrast, keyboard navigation, visible focus indicators, and accessible labels.
 4. **Verification**:
    - Ensure `npm run lint`, `npm test -- --watch=false`, and `npm run check-comments:prod` pass before submitting pull requests.
+
+---
+
+## 9. License
+
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. See [LICENSE](LICENSE), for more details.
