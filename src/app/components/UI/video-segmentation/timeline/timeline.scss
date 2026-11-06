@@ -533,6 +533,48 @@
   }
 }
 
+.magic-estimated-badge {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-color);
+  background-color: var(--card-bg);
+  border: var(--button-border-thickness) solid var(--card-bg-accent-accent);
+  border-radius: var(--button-border-radius);
+  padding: 0.2rem 0.45rem;
+  white-space: nowrap;
+}
+
+.magic-reset-lambda-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.2rem 0.45rem;
+  color: var(--primary-color);
+  background-color: transparent;
+  border: var(--button-border-thickness) solid var(--primary-color);
+  border-radius: var(--button-border-radius);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.15s ease, color 0.15s ease;
+
+  &:hover:not(:disabled) {
+    background-color: var(--primary-color);
+    color: var(--text-color-dark);
+  }
+
+  &:focus-visible {
+    outline: var(--button-border-thickness) solid var(--primary-accent);
+    outline-offset: var(--button-border-thickness);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
 .magic-actions {
   display: flex;
   align-items: center;

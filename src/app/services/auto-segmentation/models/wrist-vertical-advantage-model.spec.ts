@@ -170,4 +170,59 @@ describe('WristVerticalAdvantageModel', () => {
     // Continuity filling bridges the single missing frame so segmentation continues seamlessly
     expect(result.segments.length).toBe(1);
   });
+
+  it('should expose lambda in model parameter definitions', () => {
+    expect(model.parameters).toBeDefined();
+    const lambdaDef = model.parameters?.find((p) => p.id === 'lambda');
+    expect(lambdaDef).toBeDefined();
+    expect(lambdaDef?.type).toBe('number');
+    expect(lambdaDef?.min).toBe(0.0);
+    expect(lambdaDef?.max).toBe(2.0);
+  });
+
+  it('should estimate lambda parameter using Introselect with 3-way partitioning', () => {
+    const frames: FramePoseLandmarks[] = [];
+    const framerate = 5;
+    const totalFrames = 50;
+
+    for (let i = 0; i < totalFrames; i++) {
+      if (i >= 15 && i < 35) {
+        frames.push(createFullFrame(0.2, 0.5));
+      } else {
+        frames.push(createFullFrame(0.7, 0.5));
+      }
+    }
+
+    const estimated = model.estimateParameters({
+      landmarks: frames,
+      framerate,
+      duration: totalFrames / framerate,
+    });
+
+    expect(estimated.lambda).toBeDefined();
+    expect(estimated.lambda).toBeGreaterThan(0.0);
+    expect(estimated.lambda).toBeLessThanOrEqual(2.0);
+  });
+
+  it('should default to estimated lambda when segment is called without lambda', () => {
+    const frames: FramePoseLandmarks[] = [];
+    const framerate = 5;
+    const totalFrames = 50;
+
+    for (let i = 0; i < totalFrames; i++) {
+      if (i >= 15 && i < 35) {
+        frames.push(createFullFrame(0.2, 0.5));
+      } else {
+        frames.push(createFullFrame(0.7, 0.5));
+      }
+    }
+
+    const result = model.segment({
+      landmarks: frames,
+      framerate,
+      duration: totalFrames / framerate,
+    });
+
+    expect(result.segments.length).toBeGreaterThan(0);
+  });
 });

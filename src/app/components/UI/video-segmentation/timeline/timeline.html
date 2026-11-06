@@ -182,30 +182,52 @@
             Limiar de atividade (&lambda;):
           </label>
           <input
-            id="magic-lambda-slider"
-            type="range"
-            class="magic-slider"
-            min="0"
-            max="2"
-            step="0.05"
-            [value]="autoSegmentationService.lambda()"
-            (input)="onLambdaSliderChange($event)"
-            (change)="onLambdaSliderCommit()"
-            [disabled]="autoSegmentationService.isProcessing()"
-            aria-label="Ajustar sensibilidade do limiar lambda"
+          id="magic-lambda-slider"
+          type="range"
+          class="magic-slider"
+          min="0"
+          max="2"
+          step="0.05"
+          [value]="autoSegmentationService.lambda()"
+          (input)="onLambdaSliderChange($event)"
+          (change)="onLambdaSliderCommit()"
+          [disabled]="autoSegmentationService.isProcessing()"
+          aria-label="Ajustar sensibilidade do limiar lambda"
           />
           <input
-            id="magic-lambda-input"
-            type="number"
-            class="magic-number-input"
-            min="0"
-            max="2"
-            step="0.05"
-            [value]="autoSegmentationService.lambda()"
-            (change)="onLambdaInputChange($event)"
-            [disabled]="autoSegmentationService.isProcessing()"
-            aria-label="Valor numérico do limiar lambda"
+          id="magic-lambda-input"
+          type="number"
+          class="magic-number-input"
+          min="0"
+          max="2"
+          step="0.05"
+          [value]="autoSegmentationService.lambda()"
+          (change)="onLambdaInputChange($event)"
+          [disabled]="autoSegmentationService.isProcessing()"
+          aria-label="Valor numérico do limiar lambda"
           />
+          @if (autoSegmentationService.estimatedLambda() !== null) {
+            <span
+            class="magic-estimated-badge"
+            title="Valor estimado automaticamente pela heurística para este vídeo"
+            >
+              Estimado: {{ autoSegmentationService.estimatedLambda() }}
+            </span>
+            @if (autoSegmentationService.lambda() !== autoSegmentationService.estimatedLambda()) {
+              <button
+              type="button"
+              class="magic-reset-lambda-btn"
+              (click)="onResetLambdaToEstimated()"
+              [disabled]="autoSegmentationService.isProcessing()"
+              title="Redefinir limiar para o valor estimado"
+              [attr.aria-label]="
+                'Redefinir limiar para o valor estimado de ' + autoSegmentationService.estimatedLambda()
+              "
+              >
+                Usar estimado
+              </button>
+            }
+          }
         </div>
 
         <div class="magic-actions">

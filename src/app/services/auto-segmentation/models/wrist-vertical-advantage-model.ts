@@ -3,11 +3,15 @@ import {
   type AutoSegmentationInput,
   type AutoSegmentationResult,
   type SegmentInterval,
+  type ModelParameterDefinition,
+  type AutoSegmentationEstimationInput,
+  type AutoSegmentationEstimatedParameters,
 } from '../auto-segmentation-model.interface';
 import {
   type PoseLandmarkPoint,
   type FramePoseLandmarks,
 } from '../../landmark-extraction/landmark-data.interface';
+import { estimateLambdaFromEnergy } from '../algorithms/introselect';
 
 interface RegionItem {
   start: number,
@@ -29,6 +33,19 @@ export class WristVerticalAdvantageModel implements AutoSegmentationModel {
   public static readonly DEFAULT_MIN_REGION_LENGTH = 4;
   public static readonly MIN_SEGMENT_DURATION_OFFSET = 0.033;
 
+  public readonly parameters: readonly ModelParameterDefinition[] = [
+    {
+      id: 'lambda',
+      name: 'Limiar de atividade (λ)',
+      description: 'Limiar de energia de movimento para detecção de atividade gestual de sinalização',
+      type: 'number',
+      defaultValue: WristVerticalAdvantageModel.DEFAULT_LAMBDA,
+      min: 0.0,
+      max: 2.0,
+      step: 0.05,
+    },
+  ];
+
   // MediaPipe pose landmark indices
   private static readonly LEFT_SHOULDER = 11;
   private static readonly RIGHT_SHOULDER = 12;
@@ -43,22 +60,19 @@ export class WristVerticalAdvantageModel implements AutoSegmentationModel {
   private cachedShortTimeEnergy: Float32Array | null = null;
 
   /**
-   * Executes the heuristic segmentation pipeline over the provided landmark data.
+   * Computes or returns cached short-time energy signal from kinematic landmarks.
    *
-   * @param input Kinematic landmark data, framerate, duration, and optional lambda threshold.
-   * @returns Active sample regions and segment intervals in seconds.
+   * @param landmarks Extracted pose landmarks per frame.
+   * @param framerate Landmark sampling rate in frames per second.
+   * @returns Short-time energy Float32Array or null if no valid landmarks exist.
    */
-  public segment(input: AutoSegmentationInput): AutoSegmentationResult {
-    const { landmarks, framerate, duration } = input;
-    const lambdaParam = input.lambda ?? WristVerticalAdvantageModel.DEFAULT_LAMBDA;
-    const minRegionLength = input.minRegionLength ?? WristVerticalAdvantageModel.DEFAULT_MIN_REGION_LENGTH;
-
-    if (landmarks.length === 0 || duration <= 0 || framerate <= 0) {
-      return { activeRegions: [], segments: [] };
+  public getOrComputeShortTimeEnergy(
+    landmarks: readonly FramePoseLandmarks[],
+    framerate: number,
+  ): Float32Array | null {
+    if (landmarks.length === 0 || framerate <= 0) {
+      return null;
     }
-
-    let shortTimeEnergy: Float32Array;
-    let totalSamples: number;
 
     const isEnergyCached =
       this.cachedLandmarksRef === landmarks &&
@@ -66,85 +80,133 @@ export class WristVerticalAdvantageModel implements AutoSegmentationModel {
       this.cachedShortTimeEnergy !== null;
 
     if (isEnergyCached) {
-      shortTimeEnergy = this.cachedShortTimeEnergy!;
-      totalSamples = shortTimeEnergy.length;
-    } else {
-      // 1. Continuity preprocessing (forward/backward fill missing frames)
-      const validPoseLandmarks: PoseLandmarkPoint[][] = [];
-      let firstValid: PoseLandmarkPoint[] | null = null;
+      return this.cachedShortTimeEnergy!;
+    }
 
-      for (const plm of landmarks) {
-        if (plm && plm.length >= WristVerticalAdvantageModel.MIN_REQUIRED_LANDMARKS) {
-          firstValid = plm;
-          break;
+    // 1. Continuity preprocessing (forward/backward fill missing frames)
+    const validPoseLandmarks: PoseLandmarkPoint[][] = [];
+    let firstValid: PoseLandmarkPoint[] | null = null;
+
+    for (const plm of landmarks) {
+      if (plm && plm.length >= WristVerticalAdvantageModel.MIN_REQUIRED_LANDMARKS) {
+        firstValid = plm;
+        break;
+      }
+    }
+
+    if (!firstValid) {
+      return null;
+    }
+
+    let lastValid = firstValid;
+    for (const plm of landmarks) {
+      if (plm && plm.length >= WristVerticalAdvantageModel.MIN_REQUIRED_LANDMARKS) {
+        lastValid = plm;
+      }
+      validPoseLandmarks.push(lastValid);
+    }
+
+    const totalSamples = validPoseLandmarks.length;
+
+    // 2. 1D signal reduction
+    const instantEnergy = new Float32Array(totalSamples);
+
+    for (let i = 0; i < totalSamples; i++) {
+      const plm = validPoseLandmarks[i];
+
+      const leftShoulder = plm[WristVerticalAdvantageModel.LEFT_SHOULDER];
+      const rightShoulder = plm[WristVerticalAdvantageModel.RIGHT_SHOULDER];
+      const leftElbow = plm[WristVerticalAdvantageModel.LEFT_ELBOW];
+      const rightElbow = plm[WristVerticalAdvantageModel.RIGHT_ELBOW];
+      const leftWrist = plm[WristVerticalAdvantageModel.LEFT_WRIST];
+      const rightWrist = plm[WristVerticalAdvantageModel.RIGHT_WRIST];
+
+      const dWeL = leftElbow.y - leftWrist.y;
+      const dWeR = rightElbow.y - rightWrist.y;
+
+      const dxS = rightShoulder.x - leftShoulder.x;
+      const dyS = rightShoulder.y - leftShoulder.y;
+      const dzS = rightShoulder.z - leftShoulder.z;
+      const dS = Math.max(1e-6, Math.sqrt(dxS * dxS + dyS * dyS + dzS * dzS));
+
+      const dTildeWeL = Math.max(0, dWeL + dS);
+      const dTildeWeR = Math.max(0, dWeR + dS);
+
+      const dTildeWeRms = Math.sqrt((dTildeWeL * dTildeWeL + dTildeWeR * dTildeWeR) / 2.0);
+      const normalizedRms = dTildeWeRms / dS;
+
+      instantEnergy[i] = normalizedRms * normalizedRms;
+    }
+
+    // 3. Energy-based activity detection (centered 1-second moving average)
+    const windowSize = Math.max(1, Math.round(1.0 * framerate));
+    const halfLeft = Math.ceil(-windowSize / 2);
+    const halfRight = Math.floor(windowSize / 2);
+
+    const shortTimeEnergy = new Float32Array(totalSamples);
+
+    for (let t = 0; t < totalSamples; t++) {
+      let sum = 0;
+      for (let k = halfLeft; k <= halfRight; k++) {
+        const idx = t + k;
+        if (idx >= 0 && idx < totalSamples) {
+          sum += instantEnergy[idx];
         }
       }
+      shortTimeEnergy[t] = sum / windowSize;
+    }
 
-      if (!firstValid) {
-        return { activeRegions: [], segments: [] };
-      }
+    this.cachedLandmarksRef = landmarks;
+    this.cachedFramerate = framerate;
+    this.cachedShortTimeEnergy = shortTimeEnergy;
 
-      let lastValid = firstValid;
-      for (const plm of landmarks) {
-        if (plm && plm.length >= WristVerticalAdvantageModel.MIN_REQUIRED_LANDMARKS) {
-          lastValid = plm;
-        }
-        validPoseLandmarks.push(lastValid);
-      }
+    return shortTimeEnergy;
+  }
 
-      totalSamples = validPoseLandmarks.length;
+  /**
+   * Automatic lambda threshold estimation heuristic as formulated in LAMBDA_HEURISTIC.md:
+   * Uses Introselect with 3-way partitioning to find Q(0.10) (resting floor) and Q(0.95) (active ceiling),
+   * interpolating with alpha = 0.25 to obtain the estimated lambda threshold.
+   *
+   * @param input Kinematic landmark data, framerate, and duration.
+   * @returns Object containing the estimated lambda threshold.
+   */
+  public estimateParameters(
+    input: AutoSegmentationEstimationInput,
+  ): AutoSegmentationEstimatedParameters {
+    const energy = this.getOrComputeShortTimeEnergy(input.landmarks, input.framerate);
+    if (!energy || energy.length === 0) {
+      return { lambda: WristVerticalAdvantageModel.DEFAULT_LAMBDA };
+    }
 
-      // 2. 1D signal reduction
-      const instantEnergy = new Float32Array(totalSamples);
+    const estimatedLambda = estimateLambdaFromEnergy(energy);
+    return { lambda: estimatedLambda };
+  }
 
-      for (let i = 0; i < totalSamples; i++) {
-        const plm = validPoseLandmarks[i];
+  /**
+   * Executes the heuristic segmentation pipeline over the provided landmark data.
+   *
+   * @param input Kinematic landmark data, framerate, duration, and optional lambda threshold.
+   * @returns Active sample regions and segment intervals in seconds.
+   */
+  public segment(input: AutoSegmentationInput): AutoSegmentationResult {
+    const { landmarks, framerate, duration } = input;
+    const minRegionLength = input.minRegionLength ?? WristVerticalAdvantageModel.DEFAULT_MIN_REGION_LENGTH;
 
-        const leftShoulder = plm[WristVerticalAdvantageModel.LEFT_SHOULDER];
-        const rightShoulder = plm[WristVerticalAdvantageModel.RIGHT_SHOULDER];
-        const leftElbow = plm[WristVerticalAdvantageModel.LEFT_ELBOW];
-        const rightElbow = plm[WristVerticalAdvantageModel.RIGHT_ELBOW];
-        const leftWrist = plm[WristVerticalAdvantageModel.LEFT_WRIST];
-        const rightWrist = plm[WristVerticalAdvantageModel.RIGHT_WRIST];
+    if (landmarks.length === 0 || duration <= 0 || framerate <= 0) {
+      return { activeRegions: [], segments: [] };
+    }
 
-        const dWeL = leftElbow.y - leftWrist.y;
-        const dWeR = rightElbow.y - rightWrist.y;
+    const shortTimeEnergy = this.getOrComputeShortTimeEnergy(landmarks, framerate);
+    if (!shortTimeEnergy) {
+      return { activeRegions: [], segments: [] };
+    }
 
-        const dxS = rightShoulder.x - leftShoulder.x;
-        const dyS = rightShoulder.y - leftShoulder.y;
-        const dzS = rightShoulder.z - leftShoulder.z;
-        const dS = Math.max(1e-6, Math.sqrt(dxS * dxS + dyS * dyS + dzS * dzS));
-
-        const dTildeWeL = Math.max(0, dWeL + dS);
-        const dTildeWeR = Math.max(0, dWeR + dS);
-
-        const dTildeWeRms = Math.sqrt((dTildeWeL * dTildeWeL + dTildeWeR * dTildeWeR) / 2.0);
-        const normalizedRms = dTildeWeRms / dS;
-
-        instantEnergy[i] = normalizedRms * normalizedRms;
-      }
-
-      // 3. Energy-based activity detection (centered 1-second moving average)
-      const windowSize = Math.max(1, Math.round(1.0 * framerate));
-      const halfLeft = Math.ceil(-windowSize / 2);
-      const halfRight = Math.floor(windowSize / 2);
-
-      shortTimeEnergy = new Float32Array(totalSamples);
-
-      for (let t = 0; t < totalSamples; t++) {
-        let sum = 0;
-        for (let k = halfLeft; k <= halfRight; k++) {
-          const idx = t + k;
-          if (idx >= 0 && idx < totalSamples) {
-            sum += instantEnergy[idx];
-          }
-        }
-        shortTimeEnergy[t] = sum / windowSize;
-      }
-
-      this.cachedLandmarksRef = landmarks;
-      this.cachedFramerate = framerate;
-      this.cachedShortTimeEnergy = shortTimeEnergy;
+    const totalSamples = shortTimeEnergy.length;
+    let lambdaParam = input.lambda;
+    if (lambdaParam === undefined || lambdaParam === null || isNaN(lambdaParam)) {
+      const estimated = this.estimateParameters(input);
+      lambdaParam = estimated.lambda ?? WristVerticalAdvantageModel.DEFAULT_LAMBDA;
     }
 
     const signalActive = new Uint8Array(totalSamples);

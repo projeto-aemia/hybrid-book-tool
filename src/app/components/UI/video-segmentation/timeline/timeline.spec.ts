@@ -22,6 +22,7 @@ describe('Timeline', () => {
   let mockMediaFiles: { mediaFiles: ReturnType<typeof signal<MediaFile[]>> };
   let mockAutoSegmentation: {
     lambda: ReturnType<typeof signal<number>>,
+    estimatedLambda: ReturnType<typeof signal<number | null>>,
     isProcessing: ReturnType<typeof signal<boolean>>,
     statusMessage: ReturnType<typeof signal<string>>,
     progressPercentage: ReturnType<typeof signal<number>>,
@@ -29,6 +30,8 @@ describe('Timeline', () => {
     runAutoSegmentation: ReturnType<typeof vi.fn>,
     recalculateWithLambda: ReturnType<typeof vi.fn>,
     setLambda: ReturnType<typeof vi.fn>,
+    resetLambdaToEstimated: ReturnType<typeof vi.fn>,
+    syncActiveMediaFile: ReturnType<typeof vi.fn>,
     cancel: ReturnType<typeof vi.fn>,
   };
   let mockVideoSegmentation: {
@@ -123,6 +126,7 @@ describe('Timeline', () => {
 
     mockAutoSegmentation = {
       lambda: signal<number>(1.0),
+      estimatedLambda: signal<number | null>(null),
       isProcessing: signal<boolean>(false),
       statusMessage: signal<string>(''),
       progressPercentage: signal<number>(0),
@@ -130,6 +134,8 @@ describe('Timeline', () => {
       runAutoSegmentation: vi.fn().mockResolvedValue(undefined),
       recalculateWithLambda: vi.fn(),
       setLambda: vi.fn(),
+      resetLambdaToEstimated: vi.fn(),
+      syncActiveMediaFile: vi.fn(),
       cancel: vi.fn(),
     };
 
@@ -1207,6 +1213,40 @@ describe('Timeline', () => {
       component.onCancelMagicSegmentation();
       expect(mockAutoSegmentation.cancel).toHaveBeenCalled();
     });
+
+    it('should reset lambda to estimated and recalculate when onResetLambdaToEstimated is called', () => {
+      component.activeMediaFileId.set('file-1' as MediaFileId);
+      mockAutoSegmentation.estimatedLambda.set(0.85);
+      mockAutoSegmentation.hasCachedLandmarks.mockReturnValue(true);
+
+      component.onResetLambdaToEstimated();
+
+      expect(mockAutoSegmentation.resetLambdaToEstimated).toHaveBeenCalled();
+      expect(mockAutoSegmentation.recalculateWithLambda).toHaveBeenCalledWith('file-1', 0.85, { isManual: false });
+    });
+
+    it(
+      'should render estimated badge and button in UI when estimated lambda is available ' +
+      'and differs from lambda',
+      async () => {
+        component.isMagicPanelOpen.set(true);
+        mockAutoSegmentation.lambda.set(1.2);
+        mockAutoSegmentation.estimatedLambda.set(0.75);
+        fixture.detectChanges();
+        await fixture.whenStable();
+
+        const compiled = fixture.nativeElement as HTMLElement;
+        const badge = compiled.querySelector('.magic-estimated-badge');
+        const resetBtn = compiled.querySelector('.magic-reset-lambda-btn') as HTMLButtonElement;
+
+        expect(badge).toBeTruthy();
+        expect(badge?.textContent).toContain('0.75');
+        expect(resetBtn).toBeTruthy();
+
+        resetBtn.click();
+        expect(mockAutoSegmentation.resetLambdaToEstimated).toHaveBeenCalled();
+      }
+    );
 
     it('should update lambda signal immediately and schedule throttled recalculation via rAF on slider change', () => {
       component.activeMediaFileId.set('file-1' as MediaFileId);

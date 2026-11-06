@@ -9,14 +9,53 @@ export interface SegmentInterval {
 }
 
 /**
- * Input data provided to an auto-segmentation algorithm model.
+ * Metadata definition for a model's tunable parameter.
  */
-export interface AutoSegmentationInput {
+export interface ModelParameterDefinition<T = number | string | boolean> {
+  readonly id: string,
+  readonly name: string,
+  readonly description?: string,
+  readonly type: 'number' | 'boolean' | 'string' | 'select',
+  readonly defaultValue: T,
+  readonly min?: number,
+  readonly max?: number,
+  readonly step?: number,
+  readonly unit?: string,
+}
+
+/**
+ * Generic dictionary of arbitrary heuristic parameters passed to segmentation models.
+ */
+export interface AutoSegmentationParameters {
+  lambda?: number,
+  minRegionLength?: number,
+  [key: string]: unknown,
+}
+
+/**
+ * Result dictionary returned by parameter estimation heuristics.
+ */
+export interface AutoSegmentationEstimatedParameters {
+  lambda?: number,
+  [key: string]: unknown,
+}
+
+/**
+ * Input landmark and temporal data supplied for parameter estimation.
+ */
+export interface AutoSegmentationEstimationInput {
   landmarks: readonly FramePoseLandmarks[],
   framerate: number,
   duration: number,
+}
+
+/**
+ * Input data provided to an auto-segmentation algorithm model.
+ */
+export interface AutoSegmentationInput extends AutoSegmentationEstimationInput {
   lambda?: number,
   minRegionLength?: number,
+  parameters?: AutoSegmentationParameters,
 }
 
 /**
@@ -35,6 +74,16 @@ export interface AutoSegmentationModel {
   readonly id: string,
   readonly name: string,
   readonly description: string,
+  readonly parameters?: readonly ModelParameterDefinition[],
+
+  /**
+   * Optional parameter estimation heuristic that computes recommended default parameter values
+   * directly from extracted kinematic landmarks.
+   *
+   * @param input Kinematic landmark data, framerate, and duration.
+   * @returns Estimated parameter values (such as estimated lambda).
+   */
+  estimateParameters?(input: AutoSegmentationEstimationInput): AutoSegmentationEstimatedParameters,
 
   /**
    * Evaluates pose landmarks and computes active video segments.

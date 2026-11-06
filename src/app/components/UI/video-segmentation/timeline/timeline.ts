@@ -307,6 +307,11 @@ export class Timeline implements OnDestroy, AfterViewInit {
 
     effect(() => {
       const activeFile = this.activeMediaFile();
+      this.autoSegmentationService.syncActiveMediaFile(activeFile?.id ?? null);
+    });
+
+    effect(() => {
+      const activeFile = this.activeMediaFile();
       this.currentTime();
       const playing = this.isPlaying();
 
@@ -1718,6 +1723,25 @@ export class Timeline implements OnDestroy, AfterViewInit {
     const activeId = this.activeMediaFileId();
     if (activeId && this.autoSegmentationService.hasCachedLandmarks(activeId)) {
       this.autoSegmentationService.recalculateWithLambda(activeId, value);
+    }
+  }
+
+  /**
+   * Resets the lambda activity threshold back to the automatically estimated value
+   * and triggers recalculation of segment cuts if landmarks are cached.
+   */
+  public onResetLambdaToEstimated(): void {
+    const est = this.autoSegmentationService.estimatedLambda();
+    if (est === null) {
+      return;
+    }
+
+    this.cancelPendingLambdaRecalculation();
+    this.autoSegmentationService.resetLambdaToEstimated();
+
+    const activeId = this.activeMediaFileId();
+    if (activeId && this.autoSegmentationService.hasCachedLandmarks(activeId)) {
+      this.autoSegmentationService.recalculateWithLambda(activeId, est, { isManual: false });
     }
   }
 

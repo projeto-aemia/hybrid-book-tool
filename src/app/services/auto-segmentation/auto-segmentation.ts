@@ -36,10 +36,14 @@ export class AutoSegmentationService {
   });
 
   public readonly lambda = signal<number>(AutoSegmentationService.DEFAULT_LAMBDA);
+  public readonly estimatedLambda = signal<number | null>(null);
+  public readonly isLambdaManuallyModified = signal<boolean>(false);
   public readonly isProcessing = signal<boolean>(false);
   public readonly currentProgress = signal<LandmarkExtractionProgress | null>(null);
   public readonly activeMediaFileId = signal<MediaFileId | null>(null);
   public readonly statusMessage = signal<string>('');
+
+  private readonly fileEstimatedLambdas = new Map<MediaFileId, number>();
 
   public readonly progressPercentage = computed<number>(() => {
     return this.currentProgress()?.progressPercentage ?? 0;
@@ -88,13 +92,79 @@ export class AutoSegmentationService {
    * Updates the lambda activity threshold parameter, clamped between 0 and 2.
    *
    * @param value The desired lambda threshold value.
+   * @param options Configuration options specifying whether this change was manually initiated by the user.
    */
-  public setLambda(value: number): void {
+  public setLambda(value: number, options?: { isManual?: boolean }): void {
     const clamped = Math.max(
       AutoSegmentationService.MIN_LAMBDA,
       Math.min(AutoSegmentationService.MAX_LAMBDA, Number(value.toFixed(2))),
     );
     this.lambda.set(clamped);
+    if (options?.isManual !== false) {
+      this.isLambdaManuallyModified.set(true);
+    }
+  }
+
+  /**
+   * Resets the lambda activity threshold back to the automatically estimated value for the active file.
+   */
+  public resetLambdaToEstimated(): void {
+    const est = this.estimatedLambda();
+    if (est !== null) {
+      this.isLambdaManuallyModified.set(false);
+      this.setLambda(est, { isManual: false });
+    }
+  }
+
+  /**
+   * Retrieves or computes the estimated lambda threshold for the specified media file if landmarks are cached.
+   *
+   * @param mediaFileId Target media file ID.
+   * @returns Estimated lambda threshold or null if unavailable.
+   */
+  public getEstimatedLambdaForFile(mediaFileId: MediaFileId): number | null {
+    if (this.fileEstimatedLambdas.has(mediaFileId)) {
+      return this.fileEstimatedLambdas.get(mediaFileId)!;
+    }
+
+    const landmarksData = this.landmarkExtractionService.getCachedLandmarks(mediaFileId);
+    if (!landmarksData) {
+      return null;
+    }
+
+    const model = this.selectedModel();
+    if (typeof model.estimateParameters === 'function') {
+      const estimated = model.estimateParameters({
+        landmarks: landmarksData.landmarks,
+        framerate: landmarksData.framerate,
+        duration: landmarksData.duration,
+      });
+      if (typeof estimated.lambda === 'number' && !isNaN(estimated.lambda)) {
+        this.fileEstimatedLambdas.set(mediaFileId, estimated.lambda);
+        return estimated.lambda;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Synchronizes the estimated lambda signal and default lambda with the currently active media file.
+   *
+   * @param mediaFileId Current active media file ID.
+   */
+  public syncActiveMediaFile(mediaFileId: MediaFileId | null): void {
+    if (!mediaFileId) {
+      this.estimatedLambda.set(null);
+      return;
+    }
+
+    const est = this.getEstimatedLambdaForFile(mediaFileId);
+    this.estimatedLambda.set(est);
+
+    if (!this.isLambdaManuallyModified() && est !== null) {
+      this.setLambda(est, { isManual: false });
+    }
   }
 
   /**
@@ -109,8 +179,8 @@ export class AutoSegmentationService {
 
   /**
    * Executes the automatic segmentation process for the specified media file.
-   * Extracts landmarks if not cached, evaluates the active heuristic model, applies cuts to the timeline,
-   * and records an undoable command in the Undo/Redo history.
+   * Extracts landmarks if not cached, evaluates the parameter estimation heuristic, applies the main
+   * segmentation model, updates timeline cuts, and records an undoable command in the Undo/Redo history.
    *
    * @param mediaFileId The media file to segment.
    * @param options Optional configuration including forcing re-extraction of landmarks.
@@ -154,12 +224,39 @@ export class AutoSegmentationService {
         },
       });
 
+      if (options?.forceReextract) {
+        this.isLambdaManuallyModified.set(false);
+      }
+
       const model = this.selectedModel();
+      let effectiveLambda = this.lambda();
+
+      // Run parameter estimation heuristic if supported by the model
+      if (typeof model.estimateParameters === 'function') {
+        const estimated = model.estimateParameters({
+          landmarks: landmarksData.landmarks,
+          framerate: landmarksData.framerate,
+          duration: landmarksData.duration,
+        });
+
+        if (typeof estimated.lambda === 'number' && !isNaN(estimated.lambda)) {
+          const estLambda = estimated.lambda;
+          this.fileEstimatedLambdas.set(mediaFileId, estLambda);
+          this.estimatedLambda.set(estLambda);
+
+          // By default, use estimated lambda unless manually modified by the user
+          if (!this.isLambdaManuallyModified()) {
+            this.setLambda(estLambda, { isManual: false });
+            effectiveLambda = estLambda;
+          }
+        }
+      }
+
       const result: AutoSegmentationResult = model.segment({
         landmarks: landmarksData.landmarks,
         framerate: landmarksData.framerate,
         duration: landmarksData.duration,
-        lambda: this.lambda(),
+        lambda: effectiveLambda,
       });
 
       const applied = this.videoSegmentationService.applyAutoSegments(mediaFileId, result.segments);
@@ -199,9 +296,14 @@ export class AutoSegmentationService {
    *
    * @param mediaFileId The media file ID to re-segment.
    * @param newLambda The new lambda threshold.
+   * @param options Configuration options specifying whether this change was manually initiated by the user.
    */
-  public recalculateWithLambda(mediaFileId: MediaFileId, newLambda: number): void {
-    this.setLambda(newLambda);
+  public recalculateWithLambda(
+    mediaFileId: MediaFileId,
+    newLambda: number,
+    options?: { isManual?: boolean },
+  ): void {
+    this.setLambda(newLambda, options);
 
     const landmarksData = this.landmarkExtractionService.getCachedLandmarks(mediaFileId);
     if (!landmarksData) {

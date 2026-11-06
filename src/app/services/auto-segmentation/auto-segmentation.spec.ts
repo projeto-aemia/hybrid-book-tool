@@ -154,4 +154,80 @@ describe('AutoSegmentationService', () => {
     expect(mockLandmarkExtraction.cancelActiveExtraction).toHaveBeenCalled();
     expect(service.isProcessing()).toBe(false);
   });
+
+  it('should run parameter estimation after landmark extraction and default to estimated lambda', async () => {
+    const customEstimatingModel: AutoSegmentationModel = {
+      id: 'estimating-model',
+      name: 'Estimating Model',
+      description: 'Model for testing parameter estimation',
+      estimateParameters: vi.fn().mockReturnValue({ lambda: 0.72 }),
+      segment: vi.fn().mockReturnValue({
+        activeRegions: [[0, 5]],
+        segments: [{ startTime: 0, endTime: 1 }],
+      } as AutoSegmentationResult),
+    };
+
+    service.registerModel(customEstimatingModel);
+    service.selectModel('estimating-model');
+
+    await service.runAutoSegmentation(sampleFile.id);
+
+    expect(customEstimatingModel.estimateParameters).toHaveBeenCalledWith(
+      expect.objectContaining({
+        landmarks: dummyLandmarksData.landmarks,
+        framerate: dummyLandmarksData.framerate,
+        duration: dummyLandmarksData.duration,
+      }),
+    );
+    expect(service.estimatedLambda()).toBe(0.72);
+    expect(service.lambda()).toBe(0.72);
+    expect(customEstimatingModel.segment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        lambda: 0.72,
+      }),
+    );
+  });
+
+  it('should preserve user manually modified lambda when running auto-segmentation', async () => {
+    const customEstimatingModel: AutoSegmentationModel = {
+      id: 'estimating-model-2',
+      name: 'Estimating Model 2',
+      description: 'Model for testing manual override',
+      estimateParameters: vi.fn().mockReturnValue({ lambda: 0.65 }),
+      segment: vi.fn().mockReturnValue({
+        activeRegions: [],
+        segments: [],
+      } as AutoSegmentationResult),
+    };
+
+    service.registerModel(customEstimatingModel);
+    service.selectModel('estimating-model-2');
+
+    service.setLambda(1.35);
+    expect(service.isLambdaManuallyModified()).toBe(true);
+
+    await service.runAutoSegmentation(sampleFile.id);
+
+    expect(service.estimatedLambda()).toBe(0.65);
+    expect(service.lambda()).toBe(1.35);
+    expect(customEstimatingModel.segment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        lambda: 1.35,
+      }),
+    );
+
+    service.resetLambdaToEstimated();
+    expect(service.lambda()).toBe(0.65);
+    expect(service.isLambdaManuallyModified()).toBe(false);
+  });
+
+  it('should retrieve cached estimated lambda and sync when active media file changes', () => {
+    mockLandmarkExtraction.getCachedLandmarks.mockReturnValue(dummyLandmarksData);
+
+    const est = service.getEstimatedLambdaForFile(sampleFile.id);
+    expect(est).toBe(1.0);
+
+    service.syncActiveMediaFile(sampleFile.id);
+    expect(service.estimatedLambda()).toBe(1.0);
+  });
 });
