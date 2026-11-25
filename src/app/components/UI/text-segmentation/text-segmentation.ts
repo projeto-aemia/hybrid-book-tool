@@ -23,6 +23,7 @@ import {
   type TextSegment,
   type PdfJsAccessibleTextSegment
 } from '../../../services/text-segmentation/text-segmentation';
+import { TextAutoSegmentationService } from '../../../services/text-auto-segmentation/text-auto-segmentation';
 import { UndoRedoService } from '../../../services/undo/undo-redo';
 import { TextSegmentationCommand } from '../../../services/undo/commands/text-segmentation-commands';
 
@@ -37,6 +38,7 @@ import { PdfViewer } from '../../common/pdf-viewer/pdf-viewer';
 export class TextSegmentation implements OnDestroy {
   protected readonly mediaFilesService = inject(MediaFiles);
   protected readonly textSegmentationService = inject(TextSegmentationService);
+  protected readonly textAutoSegmentationService = inject(TextAutoSegmentationService);
   private readonly undoRedoService = inject(UndoRedoService);
   private readonly injector = inject(Injector);
   private readonly renderer2 = inject(Renderer2);
@@ -47,6 +49,7 @@ export class TextSegmentation implements OnDestroy {
   protected readonly selectedSegmentPdfJsId = signal<PdfJsAccessibleTextSegment | null>(null);
   protected readonly navigateToMarkedContentInViewer = signal<PdfJsAccessibleTextSegment | null>(null);
 
+  private readonly autoSegmentButton = viewChild<ElementRef<HTMLButtonElement>>('autoSegmentButton');
   private readonly segmentItems = viewChildren<ElementRef<HTMLDivElement>>('segmentItem');
   private readonly linkButtons = viewChildren<ElementRef<HTMLButtonElement>>('linkButton');
   private readonly upButtons = viewChildren<ElementRef<HTMLButtonElement>>('upButton');
@@ -129,6 +132,13 @@ export class TextSegmentation implements OnDestroy {
       }
     });
 
+    effect(() => {
+      const record = this.mediaFilesService.textRecord();
+      if (!record || record.type !== 'application/pdf') {
+        this.textAutoSegmentationService.reset();
+      }
+    });
+
     // Since we are handling the highlighting of segments on mousemove events and they don't fire outside of the
     // document or over the PDF viewer, since it is an iframe, we remove the highlight when the mouse leaves the list.
     // It would be possible to move the mouse fast enough to leave the list and enter the iframe or leave the document
@@ -143,6 +153,32 @@ export class TextSegmentation implements OnDestroy {
         onCleanup(() => unlisten());
       }
     });
+  }
+
+  /**
+   * Executes automated text segmentation using universal GBDT modeling with undo/redo support.
+   */
+  protected async onAutoSegmentButtonClick(): Promise<void> {
+    if (
+      this.textAutoSegmentationService.isDownloading() ||
+      this.textSegmentationService.segments().length === 0
+    ) {
+      return;
+    }
+
+    const before = this.textSegmentationService.cloneSegments(this.textSegmentationService.segments());
+    const result = await this.textAutoSegmentationService.autoSegment(before);
+
+    this.textSegmentationService.restoreSegments(result.newSegments);
+    const after = this.textSegmentationService.cloneSegments(this.textSegmentationService.segments());
+
+    this.undoRedoService.execute(
+      new TextSegmentationCommand('Segmentação automática de texto', before, after, this.textSegmentationService)
+    );
+
+    afterNextRender(() => {
+      this.autoSegmentButton()?.nativeElement.focus();
+    }, { injector: this.injector });
   }
 
   /**

@@ -1,15 +1,19 @@
 import { TestBed } from '@angular/core/testing';
-import { AutoSegmentationService } from './auto-segmentation';
+import { VideoAutoSegmentationService } from './video-auto-segmentation';
 import { LandmarkExtractionService } from '../landmark-extraction/landmark-extraction';
 import { VideoSegmentationService, type VideoSegment } from '../video-segmentation/video-segmentation';
 import { UndoRedoService } from '../undo/undo-redo';
 import { MediaFiles, type MediaFile, type MediaFileId } from '../media-files/media-files';
 import { signal } from '@angular/core';
-import { type AutoSegmentationModel, type AutoSegmentationResult } from './auto-segmentation-model.interface';
+import {
+  type VideoAutoSegmentationModel,
+  type VideoAutoSegmentationResult
+} from './video-auto-segmentation-model.interface';
 import { type VideoLandmarksData } from '../landmark-extraction/landmark-data.interface';
 
-describe('AutoSegmentationService', () => {
-  let service: AutoSegmentationService;
+
+describe('VideoAutoSegmentationService', () => {
+  let service: VideoAutoSegmentationService;
   let mockLandmarkExtraction: {
     extractLandmarks: ReturnType<typeof vi.fn>,
     hasCachedLandmarks: ReturnType<typeof vi.fn>,
@@ -71,7 +75,7 @@ describe('AutoSegmentationService', () => {
 
     TestBed.configureTestingModule({
       providers: [
-        AutoSegmentationService,
+        VideoAutoSegmentationService,
         { provide: LandmarkExtractionService, useValue: mockLandmarkExtraction },
         { provide: VideoSegmentationService, useValue: mockVideoSegmentation },
         { provide: UndoRedoService, useValue: mockUndoRedo },
@@ -79,7 +83,7 @@ describe('AutoSegmentationService', () => {
       ],
     });
 
-    service = TestBed.inject(AutoSegmentationService);
+    service = TestBed.inject(VideoAutoSegmentationService);
   });
 
   it('should be created with default settings', () => {
@@ -101,14 +105,14 @@ describe('AutoSegmentationService', () => {
   });
 
   it('should register and switch to custom models', () => {
-    const customModel: AutoSegmentationModel = {
+    const customModel: VideoAutoSegmentationModel = {
       id: 'custom-model',
       name: 'Custom Heuristic Model',
       description: 'Model for testing registration',
       segment: vi.fn().mockReturnValue({
         activeRegions: [[1, 3]],
         segments: [{ startTime: 1, endTime: 3 }],
-      } as AutoSegmentationResult),
+      } as VideoAutoSegmentationResult),
     };
 
     service.registerModel(customModel);
@@ -156,7 +160,7 @@ describe('AutoSegmentationService', () => {
   });
 
   it('should run parameter estimation after landmark extraction and default to estimated lambda', async () => {
-    const customEstimatingModel: AutoSegmentationModel = {
+    const customEstimatingModel: VideoAutoSegmentationModel = {
       id: 'estimating-model',
       name: 'Estimating Model',
       description: 'Model for testing parameter estimation',
@@ -164,7 +168,7 @@ describe('AutoSegmentationService', () => {
       segment: vi.fn().mockReturnValue({
         activeRegions: [[0, 5]],
         segments: [{ startTime: 0, endTime: 1 }],
-      } as AutoSegmentationResult),
+      } as VideoAutoSegmentationResult),
     };
 
     service.registerModel(customEstimatingModel);
@@ -189,7 +193,7 @@ describe('AutoSegmentationService', () => {
   });
 
   it('should preserve user manually modified lambda when running auto-segmentation', async () => {
-    const customEstimatingModel: AutoSegmentationModel = {
+    const customEstimatingModel: VideoAutoSegmentationModel = {
       id: 'estimating-model-2',
       name: 'Estimating Model 2',
       description: 'Model for testing manual override',
@@ -197,7 +201,7 @@ describe('AutoSegmentationService', () => {
       segment: vi.fn().mockReturnValue({
         activeRegions: [],
         segments: [],
-      } as AutoSegmentationResult),
+      } as VideoAutoSegmentationResult),
     };
 
     service.registerModel(customEstimatingModel);

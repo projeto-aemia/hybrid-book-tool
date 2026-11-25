@@ -26,6 +26,42 @@ direction="horizontal"
     ></app-info-card>
   } @else {
     <div left class="card segments-container">
+      <header
+      class="segments-header"
+      role="region"
+      aria-label="Ações e métricas de segmentação automática"
+      >
+        <button
+        #autoSegmentButton
+        type="button"
+        class="magic-button"
+        aria-label="Executar segmentação automática de texto"
+        title="Segmentação automática de texto"
+        [disabled]="textAutoSegmentationService.isDownloading() || textSegmentationService.segments().length === 0"
+        [attr.aria-busy]="textAutoSegmentationService.isDownloading()"
+        (click)="onAutoSegmentButtonClick()"
+        >
+          @if (textAutoSegmentationService.isDownloading()) {
+            <ng-container *ngTemplateOutlet="spinnerIcon"></ng-container>
+          } @else {
+            <ng-container *ngTemplateOutlet="magicIcon"></ng-container>
+          }
+          <p class="magic-button-text">Segmentar automaticamente</p>
+        </button>
+
+        <div class="header-indicators" role="status" aria-live="polite">
+          <span class="indicator-item">
+            Junções: <span class="indicator-value">{{ textAutoSegmentationService.junctions() ?? '-' }}</span>
+          </span>
+          <span class="indicator-item">
+            Segmentos: <span class="indicator-value">{{ textAutoSegmentationService.segmentsCount() ?? '-' }}</span>
+          </span>
+          <span class="indicator-item">
+            Confiança: <span class="indicator-value">{{ textAutoSegmentationService.confidence() ?? '-' }}</span>%
+          </span>
+        </div>
+      </header>
+
       <ol #segmentsList class="segments-list" role="list">
         @for (
           segment of textSegmentationService.segments();
@@ -277,6 +313,7 @@ direction="horizontal"
     </div>
   }
 </app-split>
+
 <ng-template #linkedIcon>
   <svg aria-hidden="true" viewBox="0 0 128 128" version="1.1" xmlns="http://www.w3.org/2000/svg">
     <path style="fill:none;stroke:currentColor;stroke-width:8;stroke-linecap:round;stroke-linejoin:round" d="M 64,44 V 84" />
@@ -284,6 +321,7 @@ direction="horizontal"
     <rect style="fill:none;stroke:currentColor;stroke-width:8;stroke-linecap:round;stroke-linejoin:round" width="32" height="40" x="48" y="16" rx="16" ry="16" />
   </svg>
 </ng-template>
+
 <ng-template #unlinkedIcon>
   <svg aria-hidden="true" viewBox="0 0 128 128" version="1.1" xmlns="http://www.w3.org/2000/svg">
     <rect style="fill:none;stroke:currentColor;stroke-width:8;stroke-linecap:round;stroke-linejoin:round" width="32" height="40" x="48" y="82" rx="16" ry="16" />
@@ -294,6 +332,7 @@ direction="horizontal"
     <path style="fill:none;stroke:currentColor;stroke-width:8;stroke-linecap:round;stroke-linejoin:round" d="M 64,82 V 94" />
   </svg>
 </ng-template>
+
 <ng-template #unlinkableIcon>
   <svg aria-hidden="true" viewBox="0 0 128 128" version="1.1" xmlns="http://www.w3.org/2000/svg">
   <path style="fill:none;stroke:currentColor;stroke-width:8;stroke-linecap:round;stroke-linejoin:round" d="M 24,104 104,24" />
@@ -301,18 +340,21 @@ direction="horizontal"
   <rect style="fill:none;stroke:currentColor;stroke-width:8;stroke-linecap:round;stroke-linejoin:round" width="32" height="40" x="48" y="82" rx="16" ry="16" />
 </svg>
 </ng-template>
+
 <ng-template #upIcon>
   <svg aria-hidden="true" class="icon" viewBox="0 0 512 512" version="1.1" xmlns="http://www.w3.org/2000/svg">
     <path style="fill:none;stroke:currentColor;stroke-width:32;stroke-linecap:round;stroke-linejoin:round" d="M 256,92 V 420" />
     <path style="fill:none;stroke:currentColor;stroke-width:32;stroke-linecap:round;stroke-linejoin:round" d="M 92,256 256,92 420,256" />
   </svg>
 </ng-template>
+
 <ng-template #downIcon>
   <svg aria-hidden="true" class="icon" viewBox="0 0 512 512" version="1.1" xmlns="http://www.w3.org/2000/svg">
     <path style="fill:none;stroke:currentColor;stroke-width:32;stroke-linecap:round;stroke-linejoin:round" d="M 256,92 V 420" />
     <path style="fill:none;stroke:currentColor;stroke-width:32;stroke-linecap:round;stroke-linejoin:round" d="M 92,256 256,420 420,256" />
   </svg>
 </ng-template>
+
 <ng-template #includeIcon>
   <svg aria-hidden="true" class="icon" viewBox="0 0 512 512" version="1.1" xmlns="http://www.w3.org/2000/svg">
     <path style="fill:none;stroke:currentColor;stroke-width:32;stroke-linecap:round" d="M 144,256 H 368" />
@@ -320,9 +362,44 @@ direction="horizontal"
     <circle style="fill:none;stroke:currentColor;stroke-width:32;stroke-linejoin:round" cx="256" cy="256" r="192" />
   </svg>
 </ng-template>
+
 <ng-template #excludeIcon>
   <svg aria-hidden="true" class="icon" viewBox="0 0 512 512" version="1.1" xmlns="http://www.w3.org/2000/svg">
     <path style="fill:none;stroke:currentColor;stroke-width:32;stroke-linecap:round" d="M 144,256 H 368" />
     <circle style="fill:none;stroke:currentColor;stroke-width:32;stroke-linejoin:round" cx="256" cy="256" r="192" />
+  </svg>
+</ng-template>
+
+<ng-template #magicIcon>
+  <svg aria-hidden="true" class="icon" viewBox="0 0 32 32" width="2rem" height="2rem">
+    <defs>
+      <linearGradient id="fill-color-linear-gradient">
+        <stop offset="0" class="magic-icon-linear-gradient-accent" />
+        <stop offset="1" class="magic-icon-linear-gradient-base" />
+      </linearGradient>
+      <linearGradient xlink:href="#fill-color-linear-gradient" id="fill-linear-gradient" x1="22.702465" y1="6.8466926" x2="3.4186232" y2="15.032198" gradientUnits="userSpaceOnUse" gradientTransform="translate(4,4)" />
+      <filter style="color-interpolation-filters:sRGB" id="blue-glint-filter" x="-0.768" y="-0.768" width="2.536" height="2.536">
+        <feGaussianBlur stdDeviation="2.2625" />
+      </filter>
+      <filter style="color-interpolation-filters:sRGB" id="green-glint-filter" x="-0.768" y="-0.768" width="2.536" height="2.536">
+        <feGaussianBlur stdDeviation="2.2625" />
+      </filter>
+    </defs>
+    <path style="opacity:0.75;filter:url(#green-glint-filter)" class="magic-icon-green-glint" d="m 19.404296,14.525391 1.769533,3.535157 -1.769533,3.535156 3.535158,-1.769531 3.535155,1.769531 -1.769532,-3.535156 1.769532,-3.535157 -3.535155,1.769532 z" />
+    <path style="filter:url(#blue-glint-filter)" class="magic-icon-blue-glint" d="m 10.404297,5.525391 1.769532,3.5351564 -1.769532,3.5351556 3.535157,-1.769531 3.535155,1.769531 -1.769531,-3.5351556 1.769531,-3.5351564 -3.535155,1.7695313 z" />
+    <path style="fill:url(#fill-linear-gradient)" d="m 10.404297,5.525391 1.769532,3.535 -1.769532,3.535312 3.535094,-1.769531 3.535218,1.769531 -1.769531,-3.535312 1.769531,-3.535 -3.535218,1.7695312 z m 10.535156,3.5351563 c -0.53,0.00112 -1.037896,0.2125613 -1.412109,0.5878906 l -0.002,-0.00195 -1.5,1.5000001 2.828123,2.828125 1.5,-1.5 -0.002,-0.002 c 0.375366,-0.374199 0.586847,-0.882094 0.587986,-1.412116 0,-1.1045695 -0.895431,-2.0000001 -2,-2.0000001 z m -4.914062,4.0859377 -10.5,10.5 2.828125,2.828124 10.5,-10.5 z m 3.378906,1.378906 1.769531,3.535156 -1.769531,3.535156 3.535156,-1.769531 3.535156,1.769531 -1.769531,-3.535156 1.769531,-3.535156 -3.535156,1.769531 z" />
+  </svg>
+</ng-template>
+
+<ng-template #spinnerIcon>
+  <svg
+  aria-hidden="true"
+  class="icon spinner-icon"
+  viewBox="0 0 32 32"
+  width="2rem"
+  height="2rem"
+  >
+    <circle cx="16" cy="16" r="10" style="fill:none;stroke:currentColor;stroke-width:2" />
+    <path d="M 16,6 A 10,10 0 0 1 26,16" style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round" />
   </svg>
 </ng-template>

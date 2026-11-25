@@ -24,7 +24,7 @@ import {
   type FilmstripFileSection,
 } from '../../../../services/thumbnail/thumbnail';
 import { Subscription } from 'rxjs';
-import { AutoSegmentationService } from '../../../../services/auto-segmentation/auto-segmentation';
+import { VideoAutoSegmentationService } from '../../../../services/video-auto-segmentation/video-auto-segmentation';
 import { UndoRedoService } from '../../../../services/undo/undo-redo';
 import {
   SplitSegmentCommand,
@@ -62,7 +62,7 @@ export type TimelineTrackItem =
 export class Timeline implements OnDestroy, AfterViewInit {
   protected readonly mediaFilesService = inject(MediaFiles);
   protected readonly videoSegmentationService = inject(VideoSegmentationService);
-  protected readonly autoSegmentationService = inject(AutoSegmentationService);
+  protected readonly autoSegmentationService = inject(VideoAutoSegmentationService);
   private readonly thumbnailService = inject(Thumbnail);
   private readonly undoRedoService = inject(UndoRedoService);
   private readonly renderer = inject(Renderer2);

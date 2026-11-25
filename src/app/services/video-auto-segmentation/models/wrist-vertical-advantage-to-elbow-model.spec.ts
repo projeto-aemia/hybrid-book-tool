@@ -1,11 +1,11 @@
-import { WristVerticalAdvantageModel } from './wrist-vertical-advantage-model';
+import { WristVerticalAdvantageToElbowModel } from './wrist-vertical-advantage-to-elbow-model';
 import { type FramePoseLandmarks, type PoseLandmarkPoint } from '../../landmark-extraction/landmark-data.interface';
 
 describe('WristVerticalAdvantageModel', () => {
-  let model: WristVerticalAdvantageModel;
+  let model: WristVerticalAdvantageToElbowModel;
 
   beforeEach(() => {
-    model = new WristVerticalAdvantageModel();
+    model = new WristVerticalAdvantageToElbowModel();
   });
 
   it('should initialize with correct id, name, and description', () => {

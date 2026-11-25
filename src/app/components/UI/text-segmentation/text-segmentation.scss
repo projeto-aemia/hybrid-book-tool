@@ -1,8 +1,120 @@
 .segments-container {
   display: flex;
   flex-direction: column;
+  justify-content: flex-start;
+  overflow: hidden;
+  height: 100%;
+}
+
+.segments-header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem;
+  background-color: var(--card-bg);
+  border-bottom: var(--card-border-thickness) solid var(--card-bg-accent);
+  flex-shrink: 0;
+  z-index: 3;
+}
+
+.magic-button {
+  height: var(--button-size);
+  border: var(--button-border-thickness) solid var(--card-bg-accent-accent);
+  border-radius: var(--button-border-radius);
+  padding: 0.125rem;
+  background-color: var(--card-bg);
+  display: flex;
+  align-items: center;
   justify-content: center;
-  overflow-y: auto;
+  cursor: pointer;
+  color: var(--icon-color);
+  transition: border-color 0.2s ease, color 0.2s ease;
+
+  &:hover:not(:disabled) {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+  }
+
+  &:focus-visible {
+    outline: var(--button-border-thickness) solid var(--primary-color);
+    outline-offset: calc(var(--button-border-thickness) * -1);
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+}
+
+.magic-button-text {
+  margin: 0.25rem 0.3125rem 0.25rem 0;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  white-space: nowrap;
+  color: transparent;
+  background-image: linear-gradient(to right, var(--primary-color), var(--primary-accent));
+  background-clip: text;
+}
+
+.magic-icon-linear-gradient-accent {
+  stop-color: var(--primary-accent);
+}
+
+.magic-icon-linear-gradient-base {
+  stop-color: var(--primary-color);
+}
+
+.magic-icon-blue-glint {
+  fill: var(--primary-accent);
+}
+
+.magic-icon-green-glint {
+  fill: var(--primary-accent-friend);
+}
+
+.spinner-icon {
+  animation: rotate-spinner 1s linear infinite;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
+@keyframes rotate-spinner {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spinner-icon-background {
+  stroke: var(--card-bg-accent-accent);
+}
+
+.spinner-icon-path {
+  stroke: var(--primary-color);
+}
+
+.header-indicators {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 1rem;
+  font-size: 0.875rem;
+  user-select: none;
+}
+
+.indicator-item {
+  white-space: nowrap;
+}
+
+.indicator-value {
+  color: var(--primary-color);
+  font-weight: 600;
 }
 
 $spacing-between-up-down-buttons: 0.5rem;

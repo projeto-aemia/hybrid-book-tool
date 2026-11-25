@@ -4,6 +4,7 @@ import { By } from '@angular/platform-browser';
 import { TextSegmentation } from './text-segmentation';
 import { MediaFiles } from '../../../services/media-files/media-files';
 import { TextSegmentationService, type TextSegment } from '../../../services/text-segmentation/text-segmentation';
+import { TextAutoSegmentationService } from '../../../services/text-auto-segmentation/text-auto-segmentation';
 import { InfoCard } from '../../common/info-card/info-card';
 
 describe('TextSegmentation', () => {
@@ -222,6 +223,98 @@ describe('TextSegmentation', () => {
       // Dispatch focusout with no related target
       document.dispatchEvent(new FocusEvent('focusout', { relatedTarget: null }));
       expect(component['hoveredSegmentPdfJsId']()).toBeNull();
+    });
+  });
+  describe('Header and Automatic Segmentation', () => {
+    let autoService: TextAutoSegmentationService;
+
+    beforeEach(() => {
+      autoService = TestBed.inject(TextAutoSegmentationService);
+      mediaFilesService.textRecord.set({
+        file: new File([], 'doc.pdf'),
+        type: 'application/pdf',
+        url: 'blob:test'
+      });
+      textSegmentationService.status.set('idle');
+      textSegmentationService.segments.set([
+        {
+          sequentialId: 0,
+          pdfJsId: 's1',
+          page: 1,
+          text: 'Seg 1',
+          excluded: false,
+          linkedChildren: []
+        }
+      ]);
+      fixture.detectChanges();
+    });
+
+    it('should display the header with magic button and initial dash indicators', () => {
+      const header = fixture.debugElement.query(By.css('.segments-header'));
+      expect(header).toBeTruthy();
+
+      const magicButton = fixture.debugElement.query(By.css('.magic-button'));
+      expect(magicButton).toBeTruthy();
+      expect(magicButton.nativeElement.getAttribute('aria-label')).toBe('Executar segmentação automática de texto');
+
+      const indicators = fixture.debugElement.query(By.css('.header-indicators'));
+      expect(indicators).toBeTruthy();
+      expect(indicators.nativeElement.textContent).toContain('Junções: -');
+      expect(indicators.nativeElement.textContent).toContain('Segmentos: -');
+      expect(indicators.nativeElement.textContent).toContain('Confiança: -%');
+    });
+
+    it('should show spinner icon and aria-busy when model is downloading', () => {
+      autoService.isDownloading.set(true);
+      fixture.detectChanges();
+
+      const spinner = fixture.debugElement.query(By.css('.spinner-icon'));
+      expect(spinner).toBeTruthy();
+
+      const magicButton = fixture.debugElement.query(By.css('.magic-button'));
+      expect(magicButton.nativeElement.disabled).toBe(true);
+      expect(magicButton.nativeElement.getAttribute('aria-busy')).toBe('true');
+    });
+
+    it('should trigger onAutoSegmentButtonClick when magic button is clicked', async () => {
+      const autoSegmentSpy = vi.spyOn(autoService, 'autoSegment').mockResolvedValue({
+        newSegments: textSegmentationService.segments(),
+        junctions: 3,
+        segmentsCount: 2,
+        confidence: 96
+      });
+
+      const magicButton = fixture.debugElement.query(By.css('.magic-button'));
+      magicButton.nativeElement.click();
+      await fixture.whenStable();
+
+      expect(autoSegmentSpy).toHaveBeenCalled();
+    });
+
+    it('should update indicators when auto-segmentation values are available', () => {
+      autoService.junctions.set(7);
+      autoService.segmentsCount.set(4);
+      autoService.confidence.set(98);
+      fixture.detectChanges();
+
+      const indicators = fixture.debugElement.query(By.css('.header-indicators'));
+      expect(indicators.nativeElement.textContent).toContain('Junções: 7');
+      expect(indicators.nativeElement.textContent).toContain('Segmentos: 4');
+      expect(indicators.nativeElement.textContent).toContain('Confiança: 98%');
+    });
+
+    it('should reset indicators when a non-pdf text record is selected', () => {
+      autoService.junctions.set(7);
+      autoService.segmentsCount.set(4);
+      autoService.confidence.set(98);
+      fixture.detectChanges();
+
+      mediaFilesService.textRecord.set({ file: null, type: null, url: null });
+      fixture.detectChanges();
+
+      expect(autoService.junctions()).toBeNull();
+      expect(autoService.segmentsCount()).toBeNull();
+      expect(autoService.confidence()).toBeNull();
     });
   });
 });

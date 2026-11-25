@@ -2,7 +2,8 @@
 
 The `TextSegmentationService` is responsible for parsing marked text content extracted from PDF documents,
 structuring it into a hierarchical segment tree, and managing user-driven segmentation mutations (linking,
-exclusion/inclusion, and reordering) with full undo/redo state restoration.
+exclusion/inclusion, and reordering) with full undo/redo state restoration. It also extracts spatial and typographic
+metadata to power the automated ML segmentation pipeline.
 
 ---
 
@@ -17,6 +18,16 @@ exclusion/inclusion, and reordering) with full undo/redo state restoration.
      Guarantees canonical indexing across external readers and formats.
 3. **Space Exclusion Rules**:
    - `SPACE_EXCLUDED_CHARACTERS` strips spurious trailing spaces before specific punctuation marks (e.g. `.,:;?!`).
+4. **Layout & Typographic Metadata Extraction**:
+   - For each text item with a transformation matrix (`item.transform`), the service extracts:
+     - `bbox`: Top-down bounding box [x0, y0, x1, y1] with inverted y-axis (y0 = -ty - h, y1 = -ty) conforming to
+       PyMuPDF conventions.
+     - `fontName`: Sanitized font family identifier.
+     - `fontSize`: Effective font size computed from the matrix scale.
+     - `isBold` / `isItalic`: Typographic style flags derived from font family naming patterns.
+5. **Auto-Segmentation Reset on Ingestion**:
+   - Whenever `segmentText` executes on a newly ingested PDF, `textAutoSegmentationService.reset()` is called
+     to reset inference counters (junctions, segment count, confidence) to null (rendered as dashes in the UI).
 
 ---
 
@@ -31,12 +42,17 @@ export interface TextSegment {
   text: string;
   excluded: boolean;
   linkedChildren: TextSegment[];
+  bbox?: [number, number, number, number];
+  fontName?: string;
+  fontSize?: number;
+  isBold?: boolean;
+  isItalic?: boolean;
 }
 ```
 
 - **Parent Segments**: Top-level segments in the `segments` signal array.
 - **Linked Children**: Segments conceptually joined to their parent phrase or heading.
-- **Addressability**: `addressableSegments` set maps all active PDF.js IDs for instant $O(1)$ lookup and
+- **Addressability**: `addressableSegments` set maps all active PDF.js IDs for instant O(1) lookup and
   viewer-to-list navigation.
 
 ---
@@ -70,7 +86,8 @@ Because text segmentation mutations involve complex tree rebalancing, individual
 by naive inverse method calls. Instead, the service implements snapshot-based memento restoration:
 
 1. **Deep Cloning (`cloneSegments`)**:
-   - Creates a detached deep clone of the entire `TextSegment[]` tree.
+   - Creates a detached deep clone of the entire `TextSegment[]` tree, preserving both hierarchy and layout metadata
+     (`bbox`, `fontName`, `fontSize`, `isBold`, `isItalic`).
 2. **Atomic Restoration (`restoreSegments`)**:
    - Replaces `segments` signal atomically.
    - Fully rebuilds `addressableSegments` to guarantee complete DOM synchronization.

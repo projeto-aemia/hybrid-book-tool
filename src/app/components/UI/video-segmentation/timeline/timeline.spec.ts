@@ -6,7 +6,7 @@ import {
   type VideoSegment
 } from '../../../../services/video-segmentation/video-segmentation';
 import { Thumbnail } from '../../../../services/thumbnail/thumbnail';
-import { AutoSegmentationService } from '../../../../services/auto-segmentation/auto-segmentation';
+import { VideoAutoSegmentationService } from '../../../../services/video-auto-segmentation/video-auto-segmentation';
 import { signal } from '@angular/core';
 import { of } from 'rxjs';
 
@@ -145,7 +145,7 @@ describe('Timeline', () => {
         { provide: MediaFiles, useValue: mockMediaFiles },
         { provide: VideoSegmentationService, useValue: mockVideoSegmentation },
         { provide: Thumbnail, useValue: mockThumbnail },
-        { provide: AutoSegmentationService, useValue: mockAutoSegmentation },
+        { provide: VideoAutoSegmentationService, useValue: mockAutoSegmentation },
       ],
     }).compileComponents();
 

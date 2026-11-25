@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 
 import { TextSegmentationService, TextSegment } from './text-segmentation';
+import { TextAutoSegmentationService } from '../text-auto-segmentation/text-auto-segmentation';
 import { mockSegments } from '../../../../test-assets/mock-data.json';
 import { TextContent } from 'ngx-extended-pdf-viewer';
 
@@ -912,6 +913,51 @@ describe('TextSegmentationService', () => {
       expect(segments[0].pdfJsId).toBe('mc_new_1');
       expect(segments[0].sequentialId).toBe(0);
       expect(service.isMarkedContentAnAddressableSegment('mc_new_1')).toBe(true);
+    });
+    it('segmentText should extract layout metadata when item transforms are present', () => {
+      service.segments.set([]);
+      const mockPage = {
+        items: [
+          { type: 'beginMarkedContentProps', id: 'mc_layout_1' },
+          {
+            str: 'Layout text',
+            transform: [12, 0, 0, 12, 50, 200],
+            width: 150,
+            height: 12,
+            fontName: 'CustomFont-Bold'
+          },
+          { type: 'endMarkedContent' }
+        ],
+        styles: {
+          'CustomFont-Bold': { fontFamily: 'CustomFont-Bold' }
+        }
+      };
+
+      service.segmentText([mockPage as unknown as TextContent]);
+
+      const segments = service.segments();
+      expect(segments.length).toBe(1);
+      expect(segments[0].bbox).toEqual([50, -212, 200, -200]);
+      expect(segments[0].fontName).toBe('CustomFont-Bold');
+      expect(segments[0].fontSize).toBe(12);
+      expect(segments[0].isBold).toBe(true);
+      expect(segments[0].isItalic).toBe(false);
+    });
+
+    it('segmentText should invoke textAutoSegmentationService.reset() when ingesting new PDF text', () => {
+      const autoService = TestBed.inject(TextAutoSegmentationService);
+      const resetSpy = vi.spyOn(autoService, 'reset');
+
+      const mockPage = {
+        items: [
+          { type: 'beginMarkedContentProps', id: 'mc_reset_1' },
+          { str: 'Reset test' },
+          { type: 'endMarkedContent' }
+        ]
+      };
+
+      service.segmentText([mockPage as unknown as TextContent]);
+      expect(resetSpy).toHaveBeenCalled();
     });
   });
 

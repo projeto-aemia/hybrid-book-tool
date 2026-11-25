@@ -5,17 +5,17 @@ import { UndoRedoService } from '../undo/undo-redo';
 import { MediaFiles, type MediaFileId } from '../media-files/media-files';
 import { AutoSegmentVideoCommand } from '../undo/commands/video-segmentation-commands';
 import {
-  type AutoSegmentationModel,
-  type AutoSegmentationResult,
-} from './auto-segmentation-model.interface';
-import { WristVerticalAdvantageModel } from './models/wrist-vertical-advantage-model';
+  type VideoAutoSegmentationModel,
+  type VideoAutoSegmentationResult,
+} from './video-auto-segmentation-model.interface';
+import { WristVerticalAdvantageToElbowModel } from './models/wrist-vertical-advantage-to-elbow-model';
 import { type LandmarkExtractionProgress } from '../landmark-extraction/landmark-data.interface';
 
 /**
  * Service orchestrating automatic video segmentation workflows across modular algorithms.
  */
 @Service()
-export class AutoSegmentationService {
+export class VideoAutoSegmentationService {
   private readonly landmarkExtractionService = inject(LandmarkExtractionService);
   private readonly videoSegmentationService = inject(VideoSegmentationService);
   private readonly undoRedoService = inject(UndoRedoService);
@@ -26,16 +26,16 @@ export class AutoSegmentationService {
   public static readonly MAX_LAMBDA = 2.0;
   public static readonly DEFAULT_LAMBDA = 1.0;
 
-  public readonly models = signal<AutoSegmentationModel[]>([new WristVerticalAdvantageModel()]);
+  public readonly models = signal<VideoAutoSegmentationModel[]>([new WristVerticalAdvantageToElbowModel()]);
   public readonly selectedModelId = signal<string>('wrist-vertical-advantage');
 
-  public readonly selectedModel = computed<AutoSegmentationModel>(() => {
+  public readonly selectedModel = computed<VideoAutoSegmentationModel>(() => {
     const list = this.models();
     const targetId = this.selectedModelId();
     return list.find((m) => m.id === targetId) ?? list[0];
   });
 
-  public readonly lambda = signal<number>(AutoSegmentationService.DEFAULT_LAMBDA);
+  public readonly lambda = signal<number>(VideoAutoSegmentationService.DEFAULT_LAMBDA);
   public readonly estimatedLambda = signal<number | null>(null);
   public readonly isLambdaManuallyModified = signal<boolean>(false);
   public readonly isProcessing = signal<boolean>(false);
@@ -70,7 +70,7 @@ export class AutoSegmentationService {
    *
    * @param model The auto-segmentation model to register.
    */
-  public registerModel(model: AutoSegmentationModel): void {
+  public registerModel(model: VideoAutoSegmentationModel): void {
     this.models.update((list) => {
       const filtered = list.filter((m) => m.id !== model.id);
       return [...filtered, model];
@@ -96,8 +96,8 @@ export class AutoSegmentationService {
    */
   public setLambda(value: number, options?: { isManual?: boolean }): void {
     const clamped = Math.max(
-      AutoSegmentationService.MIN_LAMBDA,
-      Math.min(AutoSegmentationService.MAX_LAMBDA, Number(value.toFixed(2))),
+      VideoAutoSegmentationService.MIN_LAMBDA,
+      Math.min(VideoAutoSegmentationService.MAX_LAMBDA, Number(value.toFixed(2))),
     );
     this.lambda.set(clamped);
     if (options?.isManual !== false) {
@@ -252,7 +252,7 @@ export class AutoSegmentationService {
         }
       }
 
-      const result: AutoSegmentationResult = model.segment({
+      const result: VideoAutoSegmentationResult = model.segment({
         landmarks: landmarksData.landmarks,
         framerate: landmarksData.framerate,
         duration: landmarksData.duration,
@@ -311,7 +311,7 @@ export class AutoSegmentationService {
     }
 
     const model = this.selectedModel();
-    const result: AutoSegmentationResult = model.segment({
+    const result: VideoAutoSegmentationResult = model.segment({
       landmarks: landmarksData.landmarks,
       framerate: landmarksData.framerate,
       duration: landmarksData.duration,

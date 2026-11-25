@@ -1,12 +1,12 @@
 import {
-  type AutoSegmentationModel,
-  type AutoSegmentationInput,
-  type AutoSegmentationResult,
+  type VideoAutoSegmentationModel,
+  type VideoAutoSegmentationInput,
+  type VideoAutoSegmentationResult,
   type SegmentInterval,
   type ModelParameterDefinition,
-  type AutoSegmentationEstimationInput,
-  type AutoSegmentationEstimatedParameters,
-} from '../auto-segmentation-model.interface';
+  type VideoAutoSegmentationEstimationInput,
+  type VideoAutoSegmentationEstimatedParameters,
+} from '../video-auto-segmentation-model.interface';
 import {
   type PoseLandmarkPoint,
   type FramePoseLandmarks,
@@ -23,11 +23,11 @@ interface RegionItem {
  * Auto-segmentation model based on the wrist vertical advantage to elbow energy heuristic.
  * Detects active sign language signing regions from subsampled MediaPipe pose landmarks.
  */
-export class WristVerticalAdvantageModel implements AutoSegmentationModel {
+export class WristVerticalAdvantageToElbowModel implements VideoAutoSegmentationModel {
   public readonly id = 'wrist-vertical-advantage';
-  public readonly name = 'Vantagem vertical do punho';
-  public readonly description =
-    'Heurística baseada na vantagem vertical do punho normalizada pela distância dos ombros com detector de energia';
+  public readonly name = 'Heurística da vantagem vertical do punho em relação ao cotovelo';
+  public readonly description = 'Heurística baseada na vantagem vertical do punho em relação ao cotovelo, normalizada' +
+    'pela distância dos ombros com detecção de atividade de sinal baseada em energia de curta duração (STE).';
 
   public static readonly DEFAULT_LAMBDA = 1.0;
   public static readonly DEFAULT_MIN_REGION_LENGTH = 4;
@@ -39,7 +39,7 @@ export class WristVerticalAdvantageModel implements AutoSegmentationModel {
       name: 'Limiar de atividade (λ)',
       description: 'Limiar de energia de movimento para detecção de atividade gestual de sinalização',
       type: 'number',
-      defaultValue: WristVerticalAdvantageModel.DEFAULT_LAMBDA,
+      defaultValue: WristVerticalAdvantageToElbowModel.DEFAULT_LAMBDA,
       min: 0.0,
       max: 2.0,
       step: 0.05,
@@ -88,7 +88,7 @@ export class WristVerticalAdvantageModel implements AutoSegmentationModel {
     let firstValid: PoseLandmarkPoint[] | null = null;
 
     for (const plm of landmarks) {
-      if (plm && plm.length >= WristVerticalAdvantageModel.MIN_REQUIRED_LANDMARKS) {
+      if (plm && plm.length >= WristVerticalAdvantageToElbowModel.MIN_REQUIRED_LANDMARKS) {
         firstValid = plm;
         break;
       }
@@ -100,7 +100,7 @@ export class WristVerticalAdvantageModel implements AutoSegmentationModel {
 
     let lastValid = firstValid;
     for (const plm of landmarks) {
-      if (plm && plm.length >= WristVerticalAdvantageModel.MIN_REQUIRED_LANDMARKS) {
+      if (plm && plm.length >= WristVerticalAdvantageToElbowModel.MIN_REQUIRED_LANDMARKS) {
         lastValid = plm;
       }
       validPoseLandmarks.push(lastValid);
@@ -114,12 +114,12 @@ export class WristVerticalAdvantageModel implements AutoSegmentationModel {
     for (let i = 0; i < totalSamples; i++) {
       const plm = validPoseLandmarks[i];
 
-      const leftShoulder = plm[WristVerticalAdvantageModel.LEFT_SHOULDER];
-      const rightShoulder = plm[WristVerticalAdvantageModel.RIGHT_SHOULDER];
-      const leftElbow = plm[WristVerticalAdvantageModel.LEFT_ELBOW];
-      const rightElbow = plm[WristVerticalAdvantageModel.RIGHT_ELBOW];
-      const leftWrist = plm[WristVerticalAdvantageModel.LEFT_WRIST];
-      const rightWrist = plm[WristVerticalAdvantageModel.RIGHT_WRIST];
+      const leftShoulder = plm[WristVerticalAdvantageToElbowModel.LEFT_SHOULDER];
+      const rightShoulder = plm[WristVerticalAdvantageToElbowModel.RIGHT_SHOULDER];
+      const leftElbow = plm[WristVerticalAdvantageToElbowModel.LEFT_ELBOW];
+      const rightElbow = plm[WristVerticalAdvantageToElbowModel.RIGHT_ELBOW];
+      const leftWrist = plm[WristVerticalAdvantageToElbowModel.LEFT_WRIST];
+      const rightWrist = plm[WristVerticalAdvantageToElbowModel.RIGHT_WRIST];
 
       const dWeL = leftElbow.y - leftWrist.y;
       const dWeR = rightElbow.y - rightWrist.y;
@@ -172,11 +172,11 @@ export class WristVerticalAdvantageModel implements AutoSegmentationModel {
    * @returns Object containing the estimated lambda threshold.
    */
   public estimateParameters(
-    input: AutoSegmentationEstimationInput,
-  ): AutoSegmentationEstimatedParameters {
+    input: VideoAutoSegmentationEstimationInput,
+  ): VideoAutoSegmentationEstimatedParameters {
     const energy = this.getOrComputeShortTimeEnergy(input.landmarks, input.framerate);
     if (!energy || energy.length === 0) {
-      return { lambda: WristVerticalAdvantageModel.DEFAULT_LAMBDA };
+      return { lambda: WristVerticalAdvantageToElbowModel.DEFAULT_LAMBDA };
     }
 
     const estimatedLambda = estimateLambdaFromEnergy(energy);
@@ -189,9 +189,9 @@ export class WristVerticalAdvantageModel implements AutoSegmentationModel {
    * @param input Kinematic landmark data, framerate, duration, and optional lambda threshold.
    * @returns Active sample regions and segment intervals in seconds.
    */
-  public segment(input: AutoSegmentationInput): AutoSegmentationResult {
+  public segment(input: VideoAutoSegmentationInput): VideoAutoSegmentationResult {
     const { landmarks, framerate, duration } = input;
-    const minRegionLength = input.minRegionLength ?? WristVerticalAdvantageModel.DEFAULT_MIN_REGION_LENGTH;
+    const minRegionLength = input.minRegionLength ?? WristVerticalAdvantageToElbowModel.DEFAULT_MIN_REGION_LENGTH;
 
     if (landmarks.length === 0 || duration <= 0 || framerate <= 0) {
       return { activeRegions: [], segments: [] };
@@ -206,7 +206,7 @@ export class WristVerticalAdvantageModel implements AutoSegmentationModel {
     let lambdaParam = input.lambda;
     if (lambdaParam === undefined || lambdaParam === null || isNaN(lambdaParam)) {
       const estimated = this.estimateParameters(input);
-      lambdaParam = estimated.lambda ?? WristVerticalAdvantageModel.DEFAULT_LAMBDA;
+      lambdaParam = estimated.lambda ?? WristVerticalAdvantageToElbowModel.DEFAULT_LAMBDA;
     }
 
     const signalActive = new Uint8Array(totalSamples);
@@ -223,7 +223,7 @@ export class WristVerticalAdvantageModel implements AutoSegmentationModel {
       const startTime = Math.max(0, startSample / framerate);
       const endTime = Math.min(duration, endSample / framerate);
 
-      if (endTime - startTime >= WristVerticalAdvantageModel.MIN_SEGMENT_DURATION_OFFSET) {
+      if (endTime - startTime >= WristVerticalAdvantageToElbowModel.MIN_SEGMENT_DURATION_OFFSET) {
         segments.push({ startTime, endTime });
       }
     }

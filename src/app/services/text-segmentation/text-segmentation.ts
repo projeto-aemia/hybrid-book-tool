@@ -1,9 +1,12 @@
-import { Service, signal } from '@angular/core';
+import { Service, signal, inject } from '@angular/core';
 import { type TextContent, type TextItem, type TextMarkedContent } from 'ngx-extended-pdf-viewer';
 import { spaceExcludedCharacters } from './space-excluded-characters.json';
+import { TextAutoSegmentationService } from '../text-auto-segmentation/text-auto-segmentation';
 
 @Service()
 export class TextSegmentationService {
+  private readonly textAutoSegmentationService = inject(TextAutoSegmentationService, { optional: true });
+
   /**
    * The list of top-level text segments. Each segment may have linked child segments.
    */
@@ -53,6 +56,9 @@ export class TextSegmentationService {
    * @param content An array with the text content from PDF.js including Marked Content for each page of the PDF.
    */
   public segmentText(content: TextContent[]): void {
+    // Reset auto-segmentation indicators whenever a new PDF is ingested.
+    this.textAutoSegmentationService?.reset();
+
     // Set the status in case workUpcoming was not called.
     this.status.set('loading');
 
@@ -68,7 +74,17 @@ export class TextSegmentationService {
     let pdfJsId = '';
     let inMarkedContent = false;
     const segments: TextSegment[] = [];
-    
+
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    let segmentFontName = '';
+    let segmentFontSize = 10;
+    let segmentIsBold = false;
+    let segmentIsItalic = false;
+    let hasLayout = false;
+
     content.forEach((pageContent, pageNumberZeroIndexed) => {
       const items = pageContent.items;
       items.forEach((item: TextItem | TextMarkedContent) => {
@@ -79,6 +95,15 @@ export class TextSegmentationService {
             inMarkedContent = true;
             pdfJsId = item.id;
             this.sequentialIdCounter++;
+            minX = Infinity;
+            minY = Infinity;
+            maxX = -Infinity;
+            maxY = -Infinity;
+            segmentFontName = '';
+            segmentFontSize = 10;
+            segmentIsBold = false;
+            segmentIsItalic = false;
+            hasLayout = false;
           } else if (item.type === 'endMarkedContent') {
             if (inMarkedContent && pdfJsId && text.trim().length !== 0) {
               const newSegment: TextSegment = {
@@ -91,6 +116,15 @@ export class TextSegmentationService {
                 text: text,
                 excluded: false,
                 linkedChildren: [],
+                ...(hasLayout
+                  ? {
+                    bbox: [minX, minY, maxX, maxY],
+                    fontName: segmentFontName,
+                    fontSize: segmentFontSize,
+                    isBold: segmentIsBold,
+                    isItalic: segmentIsItalic,
+                  }
+                  : {}),
               };
 
               segments.push(newSegment);
@@ -99,13 +133,22 @@ export class TextSegmentationService {
 
             text = '';
             inMarkedContent = false;
+            minX = Infinity;
+            minY = Infinity;
+            maxX = -Infinity;
+            maxY = -Infinity;
+            segmentFontName = '';
+            segmentFontSize = 10;
+            segmentIsBold = false;
+            segmentIsItalic = false;
+            hasLayout = false;
           } else if (item.type === 'beginMarkedContent') {
             // We have no way to address marked content without an ID, so they are just ignored, but we still increment
             // the sequential ID counter to keep the sequential IDs consistent with the order of the marked content in
             // the document structure.
             this.sequentialIdCounter++;
           }
-        
+
           // If it is not a TextMarkedContent it will be a TextItem, which has a 'str' property with the text content.
           // If we are in a marked content, we will add the text to the current segment text.
         } else {
@@ -117,6 +160,32 @@ export class TextSegmentationService {
             }
 
             text += item.str + ' ';
+
+            if ('transform' in item && Array.isArray(item.transform) && item.transform.length >= 6) {
+              hasLayout = true;
+              const tx = item.transform[4];
+              const ty = item.transform[5];
+              const w = item.width || 0;
+              const h = item.height || Math.hypot(item.transform[0], item.transform[1]) || 10;
+              const x0 = tx;
+              const x1 = tx + w;
+              const y0 = -ty - h;
+              const y1 = -ty;
+
+              minX = Math.min(minX, x0);
+              maxX = Math.max(maxX, x1);
+              minY = Math.min(minY, y0);
+              maxY = Math.max(maxY, y1);
+
+              if (!segmentFontName && item.fontName) {
+                segmentFontName = item.fontName;
+                segmentFontSize = Math.hypot(item.transform[0], item.transform[1]) || item.height || 10;
+                const styles = (pageContent as { styles?: Record<string, { fontFamily?: string }> }).styles;
+                const styleFont = styles?.[item.fontName]?.fontFamily || '';
+                segmentIsBold = (/bold/i).test(item.fontName) || (/bold/i).test(styleFont);
+                segmentIsItalic = (/italic|oblique/i).test(item.fontName) || (/italic|oblique/i).test(styleFont);
+              }
+            }
           }
         }
       });
@@ -133,6 +202,7 @@ export class TextSegmentationService {
    */
   private recoverSegmentsForNewTextRecord(content: TextContent[]): void {
     // TODO: Implement segment recovery from previous text records when switching documents.
+    this.textAutoSegmentationService?.reset();
     this.sequentialIdCounter = 0;
     this.segments.set([]);
     this.addressableSegments.clear();
@@ -592,6 +662,7 @@ export class TextSegmentationService {
   public cloneSegments(segments: readonly TextSegment[]): TextSegment[] {
     return segments.map((seg) => ({
       ...seg,
+      bbox: seg.bbox ? [...seg.bbox] : undefined,
       linkedChildren: seg.linkedChildren ? this.cloneSegments(seg.linkedChildren) : [],
     }));
   }
@@ -607,6 +678,11 @@ export interface TextSegment {
   text: string,
   excluded: boolean,
   linkedChildren: TextSegment[],
+  bbox?: [number, number, number, number],
+  fontName?: string,
+  fontSize?: number,
+  isBold?: boolean,
+  isItalic?: boolean,
 }
 
 /**
